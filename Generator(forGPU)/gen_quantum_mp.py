@@ -55,7 +55,7 @@ class MultiProblemQuantumGenerator:
     Supports: MaxCut, Max Independent Set, Vertex Cover
     """
 
-    PROBLEM_TYPES = ['maxcut', 'independent_set', 'vertex_cover']
+    PROBLEM_TYPES = ['maxcut', 'independent_set', 'vertex_cover', 'graph_coloring']
 
     def __init__(self, seed: int = 42, use_gpu: bool = True, n_workers: int = None):
         """
@@ -254,13 +254,99 @@ class MultiProblemQuantumGenerator:
 
         return SparsePauliOp(pauli_list, coeffs=coeffs)
 
+    def graph_to_graph_coloring_hamiltonian(self, G: nx.Graph, n_colors=3) -> SparsePauliOp:
+        """
+        Graph Coloring Hamiltonian (3 colors)
+
+        Goal: Assign one of 3 colors to each node such that adjacent nodes have different colors
+
+        Encoding: Each node uses 2 qubits to represent 3 colors:
+            Color 0 (Red):   |00> (Z1=+1, Z2=+1)
+            Color 1 (Green): |01> (Z1=+1, Z2=-1)
+            Color 2 (Blue):  |10> (Z1=-1, Z2=+1)
+            Invalid:         |11> (Z1=-1, Z2=-1) <- Must penalize
+
+        Hamiltonian:
+        H = penalty1 * Sum over edges: penalty if same color
+          + penalty2 * Sum over nodes: penalty if invalid state |11>
+
+        Note: This requires 2*n_nodes qubits total
+        """
+        n_nodes = G.number_of_nodes()
+        n_qubits = 2 * n_nodes  # 2 qubits per node
+        pauli_list = []
+        coeffs = []
+
+        penalty_same_color = 5.0
+        penalty_invalid = 3.0
+
+        # Helper: Get qubit indices for node i
+        def get_qubit_indices(node):
+            return (2 * node, 2 * node + 1)  # (q1, q2) for node
+
+        # Penalty 1: Adjacent nodes must have different colors
+        # For each edge (i,j), we penalize if they have the same color
+        for (i, j) in G.edges():
+            qi1, qi2 = get_qubit_indices(i)
+            qj1, qj2 = get_qubit_indices(j)
+
+            # Same color detection: Sum of products for each color combination
+            # Color 0-0: (1+Zi1)/2 * (1+Zi2)/2 * (1+Zj1)/2 * (1+Zj2)/2
+            # Color 1-1: (1+Zi1)/2 * (1-Zi2)/2 * (1+Zj1)/2 * (1-Zj2)/2
+            # Color 2-2: (1-Zi1)/2 * (1+Zi2)/2 * (1-Zj1)/2 * (1+Zj2)/2
+
+            # Simplified: We penalize when Zi1*Zj1 and Zi2*Zj2 have same sign
+            # This happens when colors match
+
+            # Z_i1 * Z_j1 term
+            pauli_str = ['I'] * n_qubits
+            pauli_str[qi1] = 'Z'
+            pauli_str[qj1] = 'Z'
+            pauli_list.append(''.join(pauli_str))
+            coeffs.append(penalty_same_color * 0.25)
+
+            # Z_i2 * Z_j2 term
+            pauli_str = ['I'] * n_qubits
+            pauli_str[qi2] = 'Z'
+            pauli_str[qj2] = 'Z'
+            pauli_list.append(''.join(pauli_str))
+            coeffs.append(penalty_same_color * 0.25)
+
+            # Z_i1 * Z_j1 * Z_i2 * Z_j2 term (4-qubit interaction)
+            pauli_str = ['I'] * n_qubits
+            pauli_str[qi1] = 'Z'
+            pauli_str[qi2] = 'Z'
+            pauli_str[qj1] = 'Z'
+            pauli_str[qj2] = 'Z'
+            pauli_list.append(''.join(pauli_str))
+            coeffs.append(penalty_same_color * 0.25)
+
+        # Penalty 2: No node should be in invalid state |11>
+        # |11> means Z1=-1 and Z2=-1, so Z1*Z2 = +1
+        # We penalize (1 + Z1*Z2)/2
+        for i in range(n_nodes):
+            qi1, qi2 = get_qubit_indices(i)
+
+            # Z_i1 * Z_i2 term
+            pauli_str = ['I'] * n_qubits
+            pauli_str[qi1] = 'Z'
+            pauli_str[qi2] = 'Z'
+            pauli_list.append(''.join(pauli_str))
+            coeffs.append(penalty_invalid * 0.5)
+
+        if len(pauli_list) == 0:
+            pauli_list = ['I' * n_qubits]
+            coeffs = [0.0]
+
+        return SparsePauliOp(pauli_list, coeffs=coeffs)
+
     def graph_to_hamiltonian(self, G: nx.Graph, problem_type: str) -> SparsePauliOp:
         """
         Convert graph to Hamiltonian based on problem type
 
         Args:
             G: NetworkX graph
-            problem_type: 'maxcut', 'independent_set', or 'vertex_cover'
+            problem_type: 'maxcut', 'independent_set', 'vertex_cover', or 'graph_coloring'
 
         Returns:
             SparsePauliOp Hamiltonian
@@ -271,6 +357,8 @@ class MultiProblemQuantumGenerator:
             return self.graph_to_independent_set_hamiltonian(G)
         elif problem_type == 'vertex_cover':
             return self.graph_to_vertex_cover_hamiltonian(G)
+        elif problem_type == 'graph_coloring':
+            return self.graph_to_graph_coloring_hamiltonian(G)
         else:
             raise ValueError(f"Unknown problem type: {problem_type}")
 
@@ -365,6 +453,10 @@ class MultiProblemQuantumGenerator:
         elif problem_type == 'vertex_cover':
             gamma_init = 0.35 + 0.25 * avg_clustering
             beta_init = 0.35 - 0.1 * (avg_degree / n_nodes)
+        elif problem_type == 'graph_coloring':
+            # Graph coloring benefits from strong mixing
+            gamma_init = 0.45 + 0.2 * (1 - avg_clustering)
+            beta_init = 0.4  # Higher beta for more exploration
         else:
             gamma_init = 0.4
             beta_init = 0.3
