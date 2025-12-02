@@ -101,7 +101,8 @@ class MultiProblemQuantumGenerator:
         except Exception as e:
             self.backend = AerSimulator(method='statevector', device='CPU')
             self.gpu_available = False
-            print(f"[CPU] Using CPU (GPU not available: {str(e)[:50]})")
+            error_msg = str(e)[:80]
+            print(f"[CPU] Using CPU (GPU not available: {error_msg})")
 
         # Qiskit 2.x: Use StatevectorSampler (no backend parameter needed)
         self.sampler = StatevectorSampler()
@@ -597,7 +598,7 @@ def worker_generate_sample(args):
     """Worker function for multiprocessing"""
     sample_id, n_nodes, edge_prob, problem_type, p, seed, use_gpu = args
 
-    gen = MultiProblemQuantumGenerator(seed=seed, use_gpu=False, n_workers=1)
+    gen = MultiProblemQuantumGenerator(seed=seed, use_gpu=use_gpu, n_workers=1)
     sample = gen.generate_single_sample(sample_id, n_nodes, edge_prob, problem_type, p, seed)
 
     if sample:
