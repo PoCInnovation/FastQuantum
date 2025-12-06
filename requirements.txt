@@ -1,0 +1,28 @@
+# Core
+numpy>=1.19
+networkx>=2.6
+scipy>=1.5
+pandas>=1.1
+
+# Machine Learning / Deep Learning (GNN)
+torch
+torch-geometric
+scikit-learn>=0.24
+xgboost>=1.5
+
+# Quantum Computing
+qiskit>=0.39.0
+qiskit-aer>=0.11.0
+qiskit-algorithms
+qiskit-optimization>=0.4.0
+# Note: qiskit-aer includes GPU support if CUDA is installed on the system
+
+
+# Visualization & UI
+matplotlib
+plotly
+gradio
+
+# Utilities
+pyarrow>=5.0
+tqdm
