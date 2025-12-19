@@ -1,26 +1,32 @@
-> If you see this section, you've just created a repository using [PoC Innovation's Open-Source project template](https://github.com/PoCInnovation/open-source-project-template). Check the [getting started guide](./.github/getting-started.md).
+# FastQuantum
 
-# [PROJECT'S NAME]
-
-[Project's description]
+FastQuantum is a research project exploring the intersection of **machine learning** and **quantum computing**.
+Its main objective is to develop an AI system capable of **predicting the optimal parameters** for efficiently running quantum algorithms.
+In the long term, the ambition is to go even further by creating a model able to **predict quantum algorithm results themselves**—a challenging goal that remains out of reach for now but guides the project’s future direction.
 
 ## How does it work?
 
-[Explain how this project is working]
+FastQuantum currently focuses on using **Graph Neural Networks (GNNs)** and **Quantum Neural Networks (QNNs)** to learn how to predict optimal parameters for quantum algorithms.
 
+Many quantum algorithms—such as **MaxCut** or **Vertex Cover**—can be represented as graphs. This makes GNNs a natural fit: they can capture the structure of the problem instance and learn meaningful patterns directly from the graph topology. In parallel, QNNs allow the model to integrate quantum-inspired representations that may generalize better to circuits with quantum-specific behavior.
 ## Getting Started
 
 ### Installation
 
-[Explain how to install all of the project's dependencies]
+Clone the repository and install the required dependencies:
+```bash
+git clone https://github.com/PoCInnovation/FastQuantum.git
+cd FastQuantum
+pip install -r requirements.txt
+```
 
 ### Quickstart
 
-[Explain how to run this project]
+Forthcoming
 
 ### Usage
 
-[Explain how to use this project]
+Forthcoming
 
 ## Get involved
 
@@ -31,11 +37,11 @@ If you're interested in how the project is organized at a higher level, please c
 ## Our PoC team ❤️
 
 Developers
-| [<img src="https://github.com/MrZalTy.png?size=85" width=85><br><sub>[Developer's name]</sub>](https://github.com/MrZalTy) | [<img src="https://github.com/MrZalTy.png?size=85" width=85><br><sub>[Developer's name]</sub>](https://github.com/MrZalTy) | [<img src="https://github.com/MrZalTy.png?size=85" width=85><br><sub>[Developer's name]</sub>](https://github.com/MrZalTy)
-| :---: | :---: | :---: |
+| [<img src="https://avatars.githubusercontent.com/u/146193362?v=4?size=85" width=85><br><sub>Elie Stroun</sub>](https://github.com/eliestroun14) | [<img src="https://avatars.githubusercontent.com/u/141178010?v=4?size=85" width=85><br><sub>Gregroire Caseaux</sub>](https://github.com/Nezketsu) | [<img src="https://avatars.githubusercontent.com/u/94183376?v=4?size=85" width=85><br><sub>Noa Smoter</sub>](https://github.com/Nerzouille) | [<img src="https://avatars.githubusercontent.com/u/101893788?v=4?size=85" width=85><br><sub>Pierre Beaud</sub>](https://github.com/divisio74)
+| :---: | :---: | :---: | :---: |
 
 Manager
-| [<img src="https://github.com/adrienfort.png?size=85" width=85><br><sub>[Manager's name]</sub>](https://github.com/adrienfort)
+| [<img src="https://avatars.githubusercontent.com/u/52128884?v=4?size=85" width=85><br><sub>Sacha Henneveux</sub>](https://github.com/SachaHenneveux)
 | :---: |
 
 <h2 align=center>
