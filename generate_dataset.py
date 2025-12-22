@@ -1,4 +1,5 @@
 import numpy as np
+import scipy.sparse.linalg as spl  # Import explicit avoiding lazy import inside function
 import networkx as nx
 from typing import Tuple, List, Dict
 import json
@@ -7,8 +8,8 @@ from pathlib import Path
 
 class QAOADataGeneratorImproved:
     """
-    Improved data generator for QAOA problems with more node features.
-    Now includes 7 features instead of 3 for better GNN performance.
+    Revised data generator for QAOA problem instances.
+    Enhanced to include both heuristic graph features and spectral positional encodings.
     """
     
     def __init__(self, seed: int = 42):
@@ -103,7 +104,71 @@ class QAOADataGeneratorImproved:
             features[:, 6] = 0.0
         
         return features
+
+    def compute_node_features_with_lpe(self, G: nx.Graph, k_pe: int = 4) -> np.ndarray:
+        """
+        Compute augmented node features combining heuristics and spectral encodings.
+        
+        Args:
+            G: Input graph.
+            k_pe: Number of Laplacian eigenvectors to compute.
+            
+        Returns:
+            Concatenated feature matrix of shape (n_nodes, 7 + k_pe).
+        """
+        # 1. Base Heuristic Features
+        heuristic_features = self.compute_node_features(G)
+        
+        # 2. Spectral Features
+        lpe_features = self.compute_laplacian_pe(G, k=k_pe)
+        
+        combined_features = np.concatenate([heuristic_features, lpe_features], axis=1)
+        
+        return combined_features
     
+    def compute_laplacian_pe(self, G: nx.Graph, k: int = 3) -> np.ndarray:
+        """
+        Compute Laplacian Positional Encodings (LPE).
+        These are the 'GPS coordinates' of the nodes in the spectral domain.
+        
+        Args:
+            G: NetworkX graph
+            k: Number of eigenvectors to keep
+            
+        Returns:
+            Matrix of shape (n_nodes, k) containing the PE
+        """
+        n_nodes = G.number_of_nodes()
+        
+        # If graph is too small, pad with zeros
+        if n_nodes < k + 1:
+            return np.zeros((n_nodes, k))
+            
+        # Compute Normalized Laplacian: L = I - D^(-1/2) A D^(-1/2)
+        L = nx.normalized_laplacian_matrix(G).astype(float)
+        
+        # Compute k smallest non-trivial eigenvectors
+        try:
+            # Use Reduced Spectral Decomposition (Lanczos algorithm)
+            # We select the smallest magnitude eigenvalues ('SM') corresponding to low-frequency modes.
+            import scipy.sparse.linalg as spl
+            eigenvalues, eigenvectors = spl.eigs(L, k=k+1, which='SM')
+            
+            # Sort by eigenvalues just in case
+            idx = eigenvalues.argsort()
+            eigenvalues = eigenvalues[idx]
+            eigenvectors = eigenvectors[:, idx]
+            
+            # Remove the first one (constant 0 for connected component)
+            # and keep the real part (they should be real for symmetric matrices)
+            pe = eigenvectors[:, 1:k+1].real
+            
+        except Exception as e:
+            print(f"Warning: LPE computation failed ({e}), using zeros.")
+            pe = np.zeros((n_nodes, k))
+            
+        return pe
+
     def graph_to_qubo(self, G: nx.Graph) -> Dict[str, np.ndarray]:
         """Convert graph to QUBO formulation for MaxCut problem."""
         n_nodes = G.number_of_nodes()
@@ -189,9 +254,9 @@ class QAOADataGeneratorImproved:
             if not nx.is_connected(G):
                 continue
             
-            # Extract features (NOW 7 FEATURES!)
+            # Extract node features (Heuristics + LPE)
             adj_matrix = self.graph_to_adjacency_matrix(G)
-            node_features = self.compute_node_features(G)
+            node_features = self.compute_node_features_with_lpe(G, k_pe=4)
             qubo = self.graph_to_qubo(G)
             
             # Get optimal parameters (simulated)
@@ -245,7 +310,8 @@ class QAOADataGeneratorImproved:
             'avg_edges': np.mean(n_edges),
             'min_edges': np.min(n_edges),
             'max_edges': np.max(n_edges),
-            'n_features': 7  # Now 7 features!
+            'max_edges': np.max(n_edges),
+            'n_features': dataset[0]['node_features'].__len__() if len(dataset) > 0 and isinstance(dataset[0]['node_features'], list) else len(dataset[0]['node_features'][0]) if len(dataset) > 0 else 0
         }
         
         return stats
@@ -288,6 +354,5 @@ if __name__ == "__main__":
     for key, value in val_stats.items():
         print(f"  {key}: {value:.2f}" if isinstance(value, float) else f"  {key}: {value}")
     
-    print("\n✅ Datasets generated with 7 features per node!")
-    print("Features: degree, degree_centrality, clustering, betweenness,")
-    print("          closeness, pagerank, eigenvector_centrality")
+    print("\nDataset generation complete.")
+    print("Features: 7 Heuristics + 4 Laplacian Positional Encodings")

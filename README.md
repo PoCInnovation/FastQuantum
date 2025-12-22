@@ -9,6 +9,14 @@ In the long term, the ambition is to go even further by creating a model able to
 FastQuantum currently focuses on using **Graph Neural Networks (GNNs)** and **Quantum Neural Networks (QNNs)** to learn how to predict optimal parameters for quantum algorithms.
 
 Many quantum algorithms—such as **MaxCut** or **Vertex Cover**—can be represented as graphs. This makes GNNs a natural fit: they can capture the structure of the problem instance and learn meaningful patterns directly from the graph topology. In parallel, QNNs allow the model to integrate quantum-inspired representations that may generalize better to circuits with quantum-specific behavior.
+## Key Features
+
+### 🧠 Graph Neural Network (GNN)
+We utilize a **Graph Attention Network (GAT)** to process the graph-structured data.
+- **Edge-Conditioned Attention**: The model explicitly uses edge weights ($J_{ij}$ from the Hamiltonian) to determine the importance of connections, mimicking the physical interactions of the MaxCut problem.
+- **Laplacian Positional Encodings (LPE)**: We inject the "spectral coordinates" of nodes (eigenvectors of the Laplacian) as features. This gives the GNN a sense of "GPS" to understand the graph's geometry and symmetry, significantly improving its ability to distinguish non-isomorphic graphs.
+- **Input Normalization**: A Batch Normalization layer ensures that these rich features are properly scaled for efficient learning.
+
 ## Getting Started
 
 ### Installation
@@ -20,13 +28,21 @@ cd FastQuantum
 pip install -r requirements.txt
 ```
 
-### Quickstart
-
-Forthcoming
-
 ### Usage
 
-Forthcoming
+1. **Generate Dataset**
+   Create a training and validation dataset with enriched features (heuristics + LPE).
+   ```bash
+   python generate_dataset.py
+   ```
+   *This will create `qaoa_train_dataset.json` and `qaoa_val_dataset.json` in the `Dataset/` folder.*
+
+2. **Train Model**
+   Train the GAT model on the generated data.
+   ```bash
+   python GnnmodelGat.py
+   ```
+   *The script will automatically detect the GPU, train the model, and save the best checkpoint as `best_qaoa_gat_model.pt`.*
 
 ## Get involved
 
