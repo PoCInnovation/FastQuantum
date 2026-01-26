@@ -11,7 +11,7 @@ FastQuantum currently focuses on using **Graph Neural Networks (GNNs)** and **Qu
 Many quantum algorithms—such as **MaxCut** or **Vertex Cover**—can be represented as graphs. This makes GNNs a natural fit: they can capture the structure of the problem instance and learn meaningful patterns directly from the graph topology. In parallel, QNNs allow the model to integrate quantum-inspired representations that may generalize better to circuits with quantum-specific behavior.
 ## Key Features
 
-### 🧠 Graph Neural Network (GNN)
+### Graph Neural Network (GNN)
 We utilize a **Graph Attention Network (GAT)** to process the graph-structured data.
 - **Edge-Conditioned Attention**: The model explicitly uses edge weights ($J_{ij}$ from the Hamiltonian) to determine the importance of connections, mimicking the physical interactions of the MaxCut problem.
 - **Laplacian Positional Encodings (LPE)**: We inject the "spectral coordinates" of nodes (eigenvectors of the Laplacian) as features. This gives the GNN a sense of "GPS" to understand the graph's geometry and symmetry, significantly improving its ability to distinguish non-isomorphic graphs.
