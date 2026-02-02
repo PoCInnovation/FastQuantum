@@ -1,0 +1,156 @@
+{
+  "model": {
+    "epoch": 64,
+    "val_loss": 0.0007020202664486868,
+    "gamma_mae": 0.025926031172275543,
+    "beta_mae": 0.015272940509021282,
+    "p_layers": 1,
+    "model_type": "GAT",
+    "total_parameters": 64453
+  },
+  "training": {
+    "n_samples": 2973,
+    "nodes": {
+      "min": 8,
+      "max": 50,
+      "mean": 29.025227043390515,
+      "std": 12.38059835378029
+    },
+    "edges": {
+      "min": 7,
+      "max": 1103,
+      "mean": 289.2680793810965,
+      "std": 239.1581218471443
+    },
+    "features": {
+      "means": [
+        21.494616419919247,
+        0.6183361513201002,
+        0.6178337684770948,
+        0.0148607320991554,
+        0.7359877257581849,
+        0.033647375504710655,
+        0.17601819466477378
+      ],
+      "stds": [
+        10.174237678373855,
+        0.1900719225746898,
+        0.18349600589996543,
+        0.021398560677318768,
+        0.10410216159061471,
+        0.02047511241993569,
+        0.051623353742898885
+      ]
+    },
+    "gamma": {
+      "min": 0.30823710349648775,
+      "max": 0.7856368205626294,
+      "mean": 0.5898422704418862,
+      "std": 0.07788485092884789
+    },
+    "beta": {
+      "min": 0.15532004784031994,
+      "max": 0.46504686197532397,
+      "mean": 0.30040218994469653,
+      "std": 0.049439281830385394
+    }
+  },
+  "validation": {
+    "n_samples": 594,
+    "nodes": {
+      "min": 8,
+      "max": 50,
+      "mean": 28.656565656565657,
+      "std": 12.63619003667623
+    },
+    "edges": {
+      "min": 12,
+      "max": 1053,
+      "mean": 281.3989898989899,
+      "std": 239.3373513329824
+    },
+    "features": {
+      "means": [
+        19.973307291666668,
+        0.5700838332358068,
+        0.5727825802472837,
+        0.016141932435416038,
+        0.7108657775681161,
+        0.032552083333333336,
+        0.17282417599396457
+      ],
+      "stds": [
+        9.405364216285786,
+        0.20174051382980016,
+        0.1956978524454883,
+        0.026089371508946073,
+        0.10900090557779701,
+        0.019392899806107314,
+        0.05180624986756419
+      ]
+    },
+    "gamma": {
+      "min": 0.3922690302666993,
+      "max": 0.7766493958061179,
+      "mean": 0.5899801450739439,
+      "std": 0.07887597595909976
+    },
+    "beta": {
+      "min": 0.17262497860530077,
+      "max": 0.46504686197532397,
+      "mean": 0.3020080587224185,
+      "std": 0.0491320798313349
+    }
+  },
+  "features": [
+    {
+      "name": "Degree",
+      "key": "degree",
+      "description": "Nombre de connexions directes du noeud. Un noeud avec un degre eleve est tres connecte.",
+      "formula": "deg(v) = |N(v)|",
+      "interpretation": "Plus le degre est eleve, plus le noeud a d'influence locale sur le graphe."
+    },
+    {
+      "name": "Degree Centrality",
+      "key": "degree_centrality",
+      "description": "Degre normalise par le nombre maximum de connexions possibles.",
+      "formula": "C_D(v) = deg(v) / (n-1)",
+      "interpretation": "Valeur entre 0 et 1. Permet de comparer des graphes de tailles differentes."
+    },
+    {
+      "name": "Clustering Coefficient",
+      "key": "clustering",
+      "description": "Mesure a quel point les voisins d'un noeud sont connectes entre eux.",
+      "formula": "C(v) = 2*e_v / (k_v * (k_v-1))",
+      "interpretation": "Proche de 1 = les voisins forment une clique. Proche de 0 = voisins isoles."
+    },
+    {
+      "name": "Betweenness Centrality",
+      "key": "betweenness",
+      "description": "Proportion de plus courts chemins passant par ce noeud.",
+      "formula": "C_B(v) = sum(sigma_st(v) / sigma_st)",
+      "interpretation": "Noeud \"pont\" important pour la communication dans le reseau."
+    },
+    {
+      "name": "Closeness Centrality",
+      "key": "closeness",
+      "description": "Inverse de la distance moyenne aux autres noeuds.",
+      "formula": "C_C(v) = (n-1) / sum(d(v,u))",
+      "interpretation": "Noeud central qui peut atteindre tous les autres rapidement."
+    },
+    {
+      "name": "PageRank",
+      "key": "pagerank",
+      "description": "Importance basee sur les connexions entrantes ponderees (algorithme Google).",
+      "formula": "PR(v) = (1-d)/n + d * sum(PR(u)/L(u))",
+      "interpretation": "Un noeud est important si des noeuds importants pointent vers lui."
+    },
+    {
+      "name": "Eigenvector Centrality",
+      "key": "eigenvector",
+      "description": "Importance basee sur l'importance des voisins.",
+      "formula": "x_v = (1/lambda) * sum(x_u)",
+      "interpretation": "Mesure l'influence globale dans le reseau."
+    }
+  ]
+}
