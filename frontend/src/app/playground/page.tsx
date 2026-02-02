@@ -12,6 +12,8 @@ import {
   faMagnifyingGlassPlus,
   faMagnifyingGlassMinus,
   faExpand,
+  faSliders,
+  faChartLine,
 } from "@fortawesome/free-solid-svg-icons";
 import { faGithub } from "@fortawesome/free-brands-svg-icons";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,6 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Link from "next/link";
 
 // Types
@@ -594,207 +597,294 @@ export default function PlaygroundPage() {
           </div>
         )}
 
-        <div className="grid gap-8 lg:grid-cols-[320px_1fr]">
-          {/* Controls Panel */}
-          <div className="space-y-6">
-            <Card>
-              <CardHeader className="pb-4">
-                <CardTitle className="text-base">Configuration</CardTitle>
-                <CardDescription>Parametres du graphe a generer</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {/* Graph Type */}
-                <div className="space-y-2">
-                  <Label>Type de graphe</Label>
-                  <Select value={graphType} onValueChange={setGraphType}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {GRAPH_TYPES.map((type) => (
-                        <SelectItem key={type.value} value={type.value}>
-                          <div>
-                            <div>{type.label}</div>
-                            <div className="text-xs text-muted-foreground">
-                              {type.description}
-                            </div>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+        <Tabs defaultValue="parameters" className="w-full">
+          <TabsList className="mb-6 grid w-full grid-cols-2">
+            <TabsTrigger value="parameters" className="flex items-center gap-2">
+              <FontAwesomeIcon icon={faSliders} className="h-4 w-4" />
+              Prediction de parametres
+            </TabsTrigger>
+            <TabsTrigger value="results" className="flex items-center gap-2">
+              <FontAwesomeIcon icon={faChartLine} className="h-4 w-4" />
+              Prediction de resultats
+            </TabsTrigger>
+          </TabsList>
 
-                {/* Number of nodes */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <Label>Nombre de noeuds</Label>
-                    <span className="font-mono text-sm">{nNodes}</span>
-                  </div>
-                  <Slider
-                    value={[nNodes]}
-                    onValueChange={([v]) => setNNodes(v)}
-                    min={5}
-                    max={40}
-                    step={1}
-                  />
-                </div>
-
-                {/* Edge probability */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <Label>Densite des aretes</Label>
-                    <span className="font-mono text-sm">{edgeProb.toFixed(2)}</span>
-                  </div>
-                  <Slider
-                    value={[edgeProb]}
-                    onValueChange={([v]) => setEdgeProb(v)}
-                    min={0.1}
-                    max={0.8}
-                    step={0.05}
-                  />
-                </div>
-
-                <Separator />
-
-                {/* Run button */}
-                <Button
-                  onClick={runPrediction}
-                  disabled={loading}
-                  className="w-full"
-                  size="lg"
-                >
-                  {loading ? (
-                    <>
-                      <FontAwesomeIcon icon={faSpinner} className="mr-2 h-4 w-4 animate-spin" />
-                      Execution...
-                    </>
-                  ) : (
-                    <>
-                      <FontAwesomeIcon icon={faPlay} className="mr-2 h-4 w-4" />
-                      Executer l&apos;IA
-                    </>
-                  )}
-                </Button>
-              </CardContent>
-            </Card>
-
-            {/* Node details */}
-            <div>
-              <h3 className="mb-3 text-sm font-medium">Details du noeud</h3>
-              <NodeDetails node={selectedNodeData} />
-            </div>
-          </div>
-
-          {/* Results Panel */}
-          <div className="space-y-6">
-            {/* Graph visualization */}
-            <Card>
-              <CardHeader className="pb-4">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-base">Visualisation du graphe</CardTitle>
-                  {result && (
-                    <div className="flex gap-2 text-xs text-muted-foreground">
-                      <Badge variant="outline">{result.graph.n_nodes} noeuds</Badge>
-                      <Badge variant="outline">{result.graph.n_edges} aretes</Badge>
-                    </div>
-                  )}
-                </div>
-              </CardHeader>
-              <CardContent>
-                <GraphVisualization
-                  graph={result?.graph || null}
-                  selectedNode={selectedNode}
-                  onNodeSelect={setSelectedNode}
-                />
-              </CardContent>
-            </Card>
-
-            {/* Predictions */}
-            {result && (
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="flex items-center gap-2 text-base">
-                      <span className="font-mono">gamma</span>
-                      <span className="text-muted-foreground">(γ)</span>
-                    </CardTitle>
-                    <CardDescription>Parametre de phase QAOA</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2">
-                      {result.gamma.map((g, i) => (
-                        <div key={i} className="flex items-center justify-between">
-                          <span className="text-sm text-muted-foreground">
-                            γ{i + 1}
-                          </span>
-                          <span className="font-mono text-lg font-medium">
-                            {g.toFixed(4)}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="flex items-center gap-2 text-base">
-                      <span className="font-mono">beta</span>
-                      <span className="text-muted-foreground">(β)</span>
-                    </CardTitle>
-                    <CardDescription>Parametre de mixage QAOA</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2">
-                      {result.beta.map((b, i) => (
-                        <div key={i} className="flex items-center justify-between">
-                          <span className="text-sm text-muted-foreground">
-                            β{i + 1}
-                          </span>
-                          <span className="font-mono text-lg font-medium">
-                            {b.toFixed(4)}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-            )}
-
-            {/* Graph stats */}
-            {result && (
+          {/* TAB 1: Parameter Prediction */}
+          <TabsContent value="parameters">
+            <div className="grid gap-8 lg:grid-cols-2">
+              {/* Configuration Panel */}
               <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base">Statistiques du graphe</CardTitle>
+                <CardHeader className="pb-4">
+                  <CardTitle className="text-base">Configuration du graphe</CardTitle>
+                  <CardDescription>Definissez les parametres du graphe a analyser</CardDescription>
                 </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-3 gap-4 text-center">
-                    <div>
-                      <div className="text-xs text-muted-foreground">Densite</div>
-                      <div className="font-mono text-lg">
-                        {result.graph.density.toFixed(3)}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-muted-foreground">Clustering moy.</div>
-                      <div className="font-mono text-lg">
-                        {result.graph.avg_clustering.toFixed(3)}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-muted-foreground">Degre moy.</div>
-                      <div className="font-mono text-lg">
-                        {result.graph.avg_degree.toFixed(1)}
-                      </div>
-                    </div>
+                <CardContent className="space-y-6">
+                  {/* Graph Type */}
+                  <div className="space-y-2">
+                    <Label>Type de graphe</Label>
+                    <Select value={graphType} onValueChange={setGraphType}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {GRAPH_TYPES.map((type) => (
+                          <SelectItem key={type.value} value={type.value}>
+                            <div>
+                              <div>{type.label}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {type.description}
+                              </div>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
+
+                  {/* Number of nodes */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <Label>Nombre de noeuds</Label>
+                      <span className="font-mono text-sm">{nNodes}</span>
+                    </div>
+                    <Slider
+                      value={[nNodes]}
+                      onValueChange={([v]) => setNNodes(v)}
+                      min={5}
+                      max={40}
+                      step={1}
+                    />
+                  </div>
+
+                  {/* Edge probability */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <Label>Densite des aretes</Label>
+                      <span className="font-mono text-sm">{edgeProb.toFixed(2)}</span>
+                    </div>
+                    <Slider
+                      value={[edgeProb]}
+                      onValueChange={([v]) => setEdgeProb(v)}
+                      min={0.1}
+                      max={0.8}
+                      step={0.05}
+                    />
+                  </div>
+
+                  <Separator />
+
+                  {/* Run button */}
+                  <Button
+                    onClick={runPrediction}
+                    disabled={loading}
+                    className="w-full"
+                    size="lg"
+                  >
+                    {loading ? (
+                      <>
+                        <FontAwesomeIcon icon={faSpinner} className="mr-2 h-4 w-4 animate-spin" />
+                        Execution...
+                      </>
+                    ) : (
+                      <>
+                        <FontAwesomeIcon icon={faPlay} className="mr-2 h-4 w-4" />
+                        Predire les parametres
+                      </>
+                    )}
+                  </Button>
                 </CardContent>
               </Card>
-            )}
-          </div>
-        </div>
+
+              {/* Parameters Results Panel */}
+              <div className="space-y-4">
+                {result ? (
+                  <>
+                    <Card className="border-primary/20 bg-primary/5">
+                      <CardHeader className="pb-3">
+                        <CardTitle className="flex items-center gap-2 text-base">
+                          <span className="font-mono text-primary">gamma</span>
+                          <span className="text-muted-foreground">(γ)</span>
+                        </CardTitle>
+                        <CardDescription>Parametre de phase QAOA</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-3">
+                          {result.gamma.map((g, i) => (
+                            <div key={i} className="flex items-center justify-between rounded-lg bg-card p-3">
+                              <span className="text-sm font-medium text-muted-foreground">
+                                γ<sub>{i + 1}</sub>
+                              </span>
+                              <span className="font-mono text-xl font-semibold text-primary">
+                                {g.toFixed(4)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="border-orange-500/20 bg-orange-500/5">
+                      <CardHeader className="pb-3">
+                        <CardTitle className="flex items-center gap-2 text-base">
+                          <span className="font-mono text-orange-600">beta</span>
+                          <span className="text-muted-foreground">(β)</span>
+                        </CardTitle>
+                        <CardDescription>Parametre de mixage QAOA</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-3">
+                          {result.beta.map((b, i) => (
+                            <div key={i} className="flex items-center justify-between rounded-lg bg-card p-3">
+                              <span className="text-sm font-medium text-muted-foreground">
+                                β<sub>{i + 1}</sub>
+                              </span>
+                              <span className="font-mono text-xl font-semibold text-orange-600">
+                                {b.toFixed(4)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardContent className="pt-4">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-muted-foreground">Couches QAOA (p)</span>
+                          <Badge variant="secondary" className="font-mono">
+                            {result.p_layers}
+                          </Badge>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </>
+                ) : (
+                  <Card className="border-dashed">
+                    <CardContent className="flex h-[400px] items-center justify-center">
+                      <div className="text-center text-muted-foreground">
+                        <FontAwesomeIcon icon={faSliders} className="mb-3 h-12 w-12 opacity-30" />
+                        <p className="text-sm">Configurez le graphe et executez la prediction</p>
+                        <p className="text-xs mt-1">Les parametres gamma et beta seront affiches ici</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+            </div>
+          </TabsContent>
+
+          {/* TAB 2: Result Prediction / Visualization */}
+          <TabsContent value="results">
+            <div className="grid gap-8 lg:grid-cols-[1fr_300px]">
+              {/* Graph visualization */}
+              <div className="space-y-6">
+                <Card>
+                  <CardHeader className="pb-4">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-base">Visualisation du graphe</CardTitle>
+                      {result && (
+                        <div className="flex gap-2 text-xs text-muted-foreground">
+                          <Badge variant="outline">{result.graph.n_nodes} noeuds</Badge>
+                          <Badge variant="outline">{result.graph.n_edges} aretes</Badge>
+                        </div>
+                      )}
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <GraphVisualization
+                      graph={result?.graph || null}
+                      selectedNode={selectedNode}
+                      onNodeSelect={setSelectedNode}
+                    />
+                  </CardContent>
+                </Card>
+
+                {/* Graph stats */}
+                {result && (
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-base">Statistiques du graphe</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-3 gap-4 text-center">
+                        <div className="rounded-lg bg-secondary/50 p-4">
+                          <div className="text-xs text-muted-foreground">Densite</div>
+                          <div className="font-mono text-xl font-semibold">
+                            {result.graph.density.toFixed(3)}
+                          </div>
+                        </div>
+                        <div className="rounded-lg bg-secondary/50 p-4">
+                          <div className="text-xs text-muted-foreground">Clustering moy.</div>
+                          <div className="font-mono text-xl font-semibold">
+                            {result.graph.avg_clustering.toFixed(3)}
+                          </div>
+                        </div>
+                        <div className="rounded-lg bg-secondary/50 p-4">
+                          <div className="text-xs text-muted-foreground">Degre moy.</div>
+                          <div className="font-mono text-xl font-semibold">
+                            {result.graph.avg_degree.toFixed(1)}
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+
+              {/* Right sidebar: Node details + Quick params */}
+              <div className="space-y-6">
+                {/* Node details */}
+                <div>
+                  <h3 className="mb-3 text-sm font-medium">Details du noeud</h3>
+                  <NodeDetails node={selectedNodeData} />
+                </div>
+
+                {/* Quick params view */}
+                {result && (
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm">Parametres predits</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div>
+                        <div className="mb-2 text-xs font-medium text-muted-foreground">Gamma (γ)</div>
+                        <div className="flex flex-wrap gap-2">
+                          {result.gamma.map((g, i) => (
+                            <Badge key={i} variant="secondary" className="font-mono">
+                              γ{i + 1}: {g.toFixed(3)}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                      <Separator />
+                      <div>
+                        <div className="mb-2 text-xs font-medium text-muted-foreground">Beta (β)</div>
+                        <div className="flex flex-wrap gap-2">
+                          {result.beta.map((b, i) => (
+                            <Badge key={i} variant="outline" className="font-mono">
+                              β{i + 1}: {b.toFixed(3)}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {!result && (
+                  <Card className="border-dashed">
+                    <CardContent className="py-8 text-center">
+                      <FontAwesomeIcon icon={faChartLine} className="mb-3 h-8 w-8 text-muted-foreground/30" />
+                      <p className="text-sm text-muted-foreground">
+                        Executez une prediction dans l&apos;onglet &quot;Prediction de parametres&quot;
+                      </p>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+            </div>
+          </TabsContent>
+        </Tabs>
       </main>
     </div>
   );
