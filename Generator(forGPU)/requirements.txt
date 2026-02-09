@@ -2,17 +2,21 @@
 numpy>=1.21.0
 networkx>=2.6
 scipy>=1.7.0
+tqdm>=4.60.0
 
-# Qiskit quantum computing framework
+# Quantum Frameworks
+# PennyLane (The new standard for FastQuantum)
+pennylane>=0.34.0
+pennylane-lightning>=0.34.0
+
+# Qiskit (Legacy/Verification)
 qiskit>=1.0.0
 qiskit-algorithms>=0.3.0
 qiskit-aer>=0.14.0
 
-# GPU support (optional but recommended for performance)
-# Uncomment the line below if you have NVIDIA GPU with CUDA support
-# qiskit-aer-gpu>=0.14.0
+# Deep Learning
+torch>=2.0.0
+torch-geometric>=2.4.0
 
-# Development tools (optional)
-# pytest>=7.0.0
-# black>=22.0.0
-# pylint>=2.10.0
+# GPU support (optional but recommended for performance)
+# qiskit-aer-gpu>=0.14.0
