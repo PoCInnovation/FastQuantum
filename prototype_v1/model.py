@@ -5,7 +5,7 @@ Pipeline:
     Graph → GNN Encoder → E_local, E_global
     problem_id → Lookup Table → E_prob
     Concat [E_global || E_local || E_prob] → Transformer → embeddings contextualisés
-    Classifier → logits → Cross-Entropy Loss → Backpropagation
+    Classifier binaire → probs → Symmetric BCE Loss → Backpropagation
 """
 
 import torch
@@ -20,11 +20,12 @@ class QuantumGraphModel(nn.Module):
     """
     Modèle complet pour résoudre des problèmes d'optimisation sur graphes.
 
-    Supporte:
+    Supporte (tous binaires):
     - MaxCut (2 classes)
     - Vertex Cover (2 classes)
     - Independent Set (2 classes)
-    - Graph Coloring (k classes)
+
+    Loss: Symmetric BCE (gère la symétrie des solutions)
     """
 
     def __init__(
@@ -36,7 +37,6 @@ class QuantumGraphModel(nn.Module):
         transformer_layers=4,
         num_heads=8,
         num_problems=10,
-        max_classes=10,
         dropout=0.1
     ):
         super().__init__()
@@ -67,24 +67,22 @@ class QuantumGraphModel(nn.Module):
             dropout=dropout
         )
 
-        # 4. Classifier
+        # 4. Classifier (binaire)
         self.classifier = Classifier(
             hidden_dim=hidden_dim,
-            max_classes=max_classes,
             dropout=dropout
         )
 
-    def forward(self, x, edge_index, problem_id, batch=None, num_classes=2):
+    def forward(self, x, edge_index, problem_id, batch=None):
         """
         Args:
             x: [n_nodes, node_input_dim]
             edge_index: [2, n_edges]
             problem_id: int ou [batch_size]
             batch: [n_nodes] (optionnel)
-            num_classes: int
 
         Returns:
-            dict avec logits, probs, predictions
+            dict avec logits, probs, predictions (tous [batch, n_nodes])
         """
         # 1. GNN Encoder → E_local, E_global
         e_local, e_global = self.encoder(x, edge_index, batch)
@@ -105,8 +103,8 @@ class QuantumGraphModel(nn.Module):
         # 3. Transformer → embeddings contextualisés
         contextualized = self.transformer(e_local, e_global, e_prob)
 
-        # 4. Classifier → logits, probs, predictions
-        output = self.classifier(contextualized, num_classes=num_classes)
+        # 4. Classifier binaire → probs, predictions
+        output = self.classifier(contextualized)
 
         return output
 
@@ -126,14 +124,19 @@ class QuantumGraphModel(nn.Module):
         return out
 
     def compute_loss(self, logits, targets, mask=None):
-        """Cross-Entropy Loss"""
+        """Symmetric BCE Loss"""
         return self.classifier.compute_loss(logits, targets, mask)
 
-    def forward_with_loss(self, x, edge_index, problem_id, targets, batch=None, num_classes=2):
+    def compute_similarity(self, predictions, targets):
+        """Pourcentage de ressemblance (avec symétrie)"""
+        return self.classifier.compute_similarity(predictions, targets)
+
+    def forward_with_loss(self, x, edge_index, problem_id, targets, batch=None):
         """Forward + Loss en une seule passe"""
-        output = self.forward(x, edge_index, problem_id, batch, num_classes)
+        output = self.forward(x, edge_index, problem_id, batch)
         loss = self.compute_loss(output['logits'], targets)
-        return output, loss
+        similarity = self.compute_similarity(output['predictions'], targets)
+        return output, loss, similarity
 
 
 if __name__ == "__main__":
@@ -159,24 +162,27 @@ if __name__ == "__main__":
     print(f"Paramètres: {sum(p.numel() for p in model.parameters()):,}")
 
     # Forward (MaxCut)
-    output = model(x, edge_index, problem_id=0, num_classes=2)
-    print(f"\nMaxCut (2 classes):")
-    print(f"  Logits: {output['logits'].shape}")
+    output = model(x, edge_index, problem_id=0)
+    print(f"\nMaxCut:")
+    print(f"  Probs: {output['probs'].shape}")
     print(f"  Predictions: {output['predictions']}")
 
-    # Loss
+    # Symmetric Loss
     targets = torch.tensor([[1, 0, 1, 0, 1, 0]])
     loss = model.compute_loss(output['logits'], targets)
     print(f"  Loss: {loss.item():.4f}")
 
+    # Test symétrie
+    loss_inv = model.compute_loss(output['logits'], 1 - targets)
+    print(f"  Loss inversée: {loss_inv.item():.4f}")
+    print(f"  Symétrie OK ? {'✅' if abs(loss.item() - loss_inv.item()) < 1e-6 else '❌'}")
+
+    # Similarité
+    sim = model.compute_similarity(output['predictions'], targets)
+    print(f"  Similarité: {sim:.0%}")
+
     # Backprop
     loss.backward()
     print("  Backprop OK")
-
-    # Graph Coloring
-    output = model(x, edge_index, problem_id=3, num_classes=5)
-    print(f"\nGraph Coloring (5 classes):")
-    print(f"  Logits: {output['logits'].shape}")
-    print(f"  Predictions: {output['predictions']}")
 
     print("\n✅ Tous les tests passés!")

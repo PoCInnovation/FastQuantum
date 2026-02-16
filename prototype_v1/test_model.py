@@ -3,9 +3,10 @@ Script de Test Complet pour le Prototype v1
 
 Teste:
 1. Chaque composant individuellement
-2. Le modèle complet
+2. Le modèle complet (binaire uniquement)
 3. La backpropagation
-4. Différents problèmes (binaire et multi-classe)
+4. La Symmetric BCE Loss (symétrie des solutions)
+5. La métrique de similarité
 """
 
 import torch
@@ -57,7 +58,7 @@ def test_encoder():
     assert e_local.shape == (6, 128), f"Expected (6, 128), got {e_local.shape}"
     assert e_global.shape == (1, 128), f"Expected (1, 128), got {e_global.shape}"
 
-    print("✅ Encoder OK\n")
+    print("OK Encoder\n")
     return True
 
 
@@ -87,7 +88,7 @@ def test_problem_embedding():
     assert e_prob_batch.shape == (4, 128)
     assert diff > 0, "Les embeddings devraient être différents"
 
-    print("✅ Problem Embedding OK\n")
+    print("OK Problem Embedding\n")
     return True
 
 
@@ -121,14 +122,14 @@ def test_transformer():
 
     assert output.shape == (batch_size, n_nodes, 256)
 
-    print("✅ Transformer OK\n")
+    print("OK Transformer\n")
     return True
 
 
-def test_classifier():
-    """Test du Classifier"""
+def test_classifier_binary():
+    """Test du Classifier binaire"""
     print("=" * 60)
-    print("TEST 4: Classifier")
+    print("TEST 4: Classifier (Binaire + Sigmoid)")
     print("=" * 60)
 
     batch_size = 2
@@ -136,38 +137,102 @@ def test_classifier():
     hidden_dim = 256
 
     x = torch.randn(batch_size, n_nodes, hidden_dim)
-    classifier = Classifier(hidden_dim=256, max_classes=10)
+    classifier = Classifier(hidden_dim=256)
 
-    # Test binaire (2 classes)
-    output_2 = classifier(x, num_classes=2)
-    print(f"Binaire (2 classes):")
-    print(f"  Logits: {output_2['logits'].shape}")
-    print(f"  Probs: {output_2['probs'].shape}")
-    print(f"  Predictions: {output_2['predictions'].shape}")
-    print(f"  Exemple: {output_2['predictions'][0].tolist()}")
+    output = classifier(x)
+    print(f"Logits: {output['logits'].shape}")
+    print(f"Probs: {output['probs'].shape}")
+    print(f"Predictions: {output['predictions'].shape}")
+    print(f"Exemple probs: {[f'{p:.2f}' for p in output['probs'][0].tolist()]}")
+    print(f"Exemple preds: {output['predictions'][0].tolist()}")
 
-    # Test multi-classe (5 classes)
-    output_5 = classifier(x, num_classes=5)
-    print(f"\nMulti-classe (5 classes):")
-    print(f"  Logits: {output_5['logits'].shape}")
-    print(f"  Predictions: {output_5['predictions'][0].tolist()}")
+    # Vérifier les shapes (binaire = pas de dimension de classes)
+    assert output['logits'].shape == (batch_size, n_nodes)
+    assert output['probs'].shape == (batch_size, n_nodes)
+    assert output['predictions'].shape == (batch_size, n_nodes)
 
-    # Test loss
-    targets = torch.randint(0, 2, (batch_size, n_nodes))
-    loss = classifier.compute_loss(output_2['logits'], targets)
-    print(f"\nLoss (CE): {loss.item():.4f}")
+    # Vérifier que les probs sont entre 0 et 1
+    assert output['probs'].min() >= 0 and output['probs'].max() <= 1
 
-    assert output_2['logits'].shape == (batch_size, n_nodes, 2)
-    assert output_5['logits'].shape == (batch_size, n_nodes, 5)
+    print("OK Classifier Binaire\n")
+    return True
 
-    print("✅ Classifier OK\n")
+
+def test_symmetric_loss():
+    """Test de la Symmetric BCE Loss"""
+    print("=" * 60)
+    print("TEST 5: Symmetric BCE Loss")
+    print("=" * 60)
+
+    classifier = Classifier(hidden_dim=256)
+
+    # Logits fixes pour les tests
+    logits = torch.tensor([[2.0, -2.0, 2.0, -2.0, 2.0, -2.0]])
+
+    # Target et son inverse
+    target = torch.tensor([[1.0, 0.0, 1.0, 0.0, 1.0, 0.0]])
+    target_inv = torch.tensor([[0.0, 1.0, 0.0, 1.0, 0.0, 1.0]])
+
+    loss_normal = classifier.compute_loss(logits, target)
+    loss_inverse = classifier.compute_loss(logits, target_inv)
+
+    print(f"Target:         {target[0].tolist()}")
+    print(f"Target inversé: {target_inv[0].tolist()}")
+    print(f"Loss (normal):  {loss_normal.item():.4f}")
+    print(f"Loss (inversé): {loss_inverse.item():.4f}")
+    print(f"Différence:     {abs(loss_normal.item() - loss_inverse.item()):.6f}")
+
+    # Les deux loss doivent être identiques
+    assert abs(loss_normal.item() - loss_inverse.item()) < 1e-5, \
+        f"Les loss devraient être égales: {loss_normal.item():.6f} vs {loss_inverse.item():.6f}"
+
+    print("OK Symmetric Loss (les deux loss sont identiques)\n")
+    return True
+
+
+def test_similarity_metric():
+    """Test de la métrique de similarité"""
+    print("=" * 60)
+    print("TEST 6: Métrique de Similarité")
+    print("=" * 60)
+
+    classifier = Classifier(hidden_dim=256)
+
+    # Cas 1: identique
+    pred1 = torch.tensor([[0, 1, 0, 1, 0, 1]])
+    target1 = torch.tensor([[0, 1, 0, 1, 0, 1]])
+    sim1 = classifier.compute_similarity(pred1, target1)
+    print(f"Identique:     {pred1[0].tolist()} vs {target1[0].tolist()} → {sim1:.0%}")
+
+    # Cas 2: inversé (symétrie)
+    pred2 = torch.tensor([[1, 0, 1, 0, 1, 0]])
+    target2 = torch.tensor([[0, 1, 0, 1, 0, 1]])
+    sim2 = classifier.compute_similarity(pred2, target2)
+    print(f"Inversé:       {pred2[0].tolist()} vs {target2[0].tolist()} → {sim2:.0%}")
+
+    # Cas 3: partiellement correct
+    pred3 = torch.tensor([[0, 1, 0, 0, 0, 1]])
+    target3 = torch.tensor([[0, 1, 0, 1, 0, 1]])
+    sim3 = classifier.compute_similarity(pred3, target3)
+    print(f"Partiel (1 err):{pred3[0].tolist()} vs {target3[0].tolist()} → {sim3:.0%}")
+
+    # Cas 4: tout faux
+    pred4 = torch.tensor([[0, 0, 0, 0, 0, 0]])
+    target4 = torch.tensor([[0, 1, 0, 1, 0, 1]])
+    sim4 = classifier.compute_similarity(pred4, target4)
+    print(f"Moitié:        {pred4[0].tolist()} vs {target4[0].tolist()} → {sim4:.0%}")
+
+    assert sim1 == 1.0, f"Identique devrait être 100%, got {sim1:.0%}"
+    assert sim2 == 1.0, f"Inversé devrait être 100%, got {sim2:.0%}"
+
+    print("OK Similarité\n")
     return True
 
 
 def test_full_model():
     """Test du modèle complet"""
     print("=" * 60)
-    print("TEST 5: Modèle Complet (QuantumGraphModel)")
+    print("TEST 7: Modèle Complet (QuantumGraphModel)")
     print("=" * 60)
 
     x, edge_index = create_test_graph(n_nodes=6, n_features=7)
@@ -183,31 +248,33 @@ def test_full_model():
     n_params = sum(p.numel() for p in model.parameters())
     print(f"Paramètres totaux: {n_params:,}")
 
-    # Test MaxCut (problem_id=0, 2 classes)
-    print(f"\n--- MaxCut (problem_id=0, 2 classes) ---")
-    output = model(x, edge_index, problem_id=0, num_classes=2)
-    print(f"Logits: {output['logits'].shape}")
+    # Test MaxCut (problem_id=0)
+    print(f"\n--- MaxCut (problem_id=0) ---")
+    output = model(x, edge_index, problem_id=0)
+    print(f"Probs: {output['probs'].shape}")
     print(f"Predictions: {output['predictions'].tolist()}")
 
-    # Test Vertex Cover (problem_id=1, 2 classes)
-    print(f"\n--- Vertex Cover (problem_id=1, 2 classes) ---")
-    output = model(x, edge_index, problem_id=1, num_classes=2)
+    # Test Vertex Cover (problem_id=1)
+    print(f"\n--- Vertex Cover (problem_id=1) ---")
+    output = model(x, edge_index, problem_id=1)
     print(f"Predictions: {output['predictions'].tolist()}")
 
-    # Test Graph Coloring (problem_id=3, 4 classes)
-    print(f"\n--- Graph Coloring (problem_id=3, 4 classes) ---")
-    output = model(x, edge_index, problem_id=3, num_classes=4)
-    print(f"Logits: {output['logits'].shape}")
+    # Test Independent Set (problem_id=2)
+    print(f"\n--- Independent Set (problem_id=2) ---")
+    output = model(x, edge_index, problem_id=2)
     print(f"Predictions: {output['predictions'].tolist()}")
 
-    print("✅ Modèle Complet OK\n")
+    assert output['probs'].shape == (1, 6)
+    assert output['predictions'].shape == (1, 6)
+
+    print("OK Modèle Complet\n")
     return True
 
 
 def test_backpropagation():
-    """Test de la backpropagation à travers tout le modèle"""
+    """Test de la backpropagation avec Symmetric BCE"""
     print("=" * 60)
-    print("TEST 6: Backpropagation")
+    print("TEST 8: Backpropagation (Symmetric BCE)")
     print("=" * 60)
 
     x, edge_index = create_test_graph(n_nodes=6, n_features=7)
@@ -219,17 +286,21 @@ def test_backpropagation():
     )
 
     # Forward
-    output = model(x, edge_index, problem_id=0, num_classes=2)
+    output = model(x, edge_index, problem_id=0)
 
     # Loss
     targets = torch.tensor([[1, 0, 1, 0, 1, 0]])
     loss = model.compute_loss(output['logits'], targets)
-    print(f"Loss avant backward: {loss.item():.4f}")
+    print(f"Loss: {loss.item():.4f}")
+
+    # Similarité
+    sim = model.compute_similarity(output['predictions'], targets)
+    print(f"Similarité: {sim:.0%}")
 
     # Backward
     loss.backward()
 
-    # Vérifier que les gradients existent partout
+    # Vérifier gradients
     components = {
         'GNN Encoder': model.encoder,
         'Problem Embedding': model.problem_embedding,
@@ -238,26 +309,25 @@ def test_backpropagation():
     }
 
     print("\nGradients par composant:")
+    all_ok = True
     for name, component in components.items():
         has_grad = any(p.grad is not None and p.grad.abs().sum() > 0
                       for p in component.parameters() if p.requires_grad)
-        status = "✅" if has_grad else "❌"
-        print(f"  {status} {name}")
+        status = "OK" if has_grad else "FAIL"
+        if not has_grad:
+            all_ok = False
+        print(f"  [{status}] {name}")
 
-    # Vérifier spécifiquement la lookup table
-    lookup_grad = model.problem_embedding.embedding_table.weight.grad
-    if lookup_grad is not None:
-        grad_problem_0 = lookup_grad[0].abs().sum().item()
-        print(f"\n  Gradient lookup table (ID=0): {grad_problem_0:.6f}")
+    assert all_ok, "Tous les composants doivent avoir des gradients"
 
-    print("✅ Backpropagation OK\n")
+    print("OK Backpropagation\n")
     return True
 
 
 def test_training_step():
-    """Simule une étape d'entraînement"""
+    """Simule une étape d'entraînement avec Symmetric BCE"""
     print("=" * 60)
-    print("TEST 7: Training Step Simulation")
+    print("TEST 9: Training Step (Symmetric BCE)")
     print("=" * 60)
 
     x, edge_index = create_test_graph(n_nodes=6, n_features=7)
@@ -271,28 +341,28 @@ def test_training_step():
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
     targets = torch.tensor([[1, 0, 1, 0, 1, 0]])
 
-    print("Simulation de 5 steps d'entraînement:")
+    print("Simulation de 5 steps:")
 
     for step in range(5):
         optimizer.zero_grad()
 
-        output = model(x, edge_index, problem_id=0, num_classes=2)
-        loss = model.compute_loss(output['logits'], targets)
+        output, loss, similarity = model.forward_with_loss(
+            x, edge_index, problem_id=0, targets=targets
+        )
 
         loss.backward()
         optimizer.step()
 
-        accuracy = (output['predictions'] == targets).float().mean().item()
-        print(f"  Step {step+1}: Loss = {loss.item():.4f}, Accuracy = {accuracy:.2%}")
+        print(f"  Step {step+1}: Loss = {loss.item():.4f}, Similarité = {similarity:.0%}")
 
-    print("✅ Training Step OK\n")
+    print("OK Training Step\n")
     return True
 
 
 def test_different_graph_sizes():
     """Test avec différentes tailles de graphes"""
     print("=" * 60)
-    print("TEST 8: Différentes Tailles de Graphes")
+    print("TEST 10: Différentes Tailles de Graphes")
     print("=" * 60)
 
     model = QuantumGraphModel(
@@ -304,30 +374,32 @@ def test_different_graph_sizes():
     for n_nodes in [4, 8, 16, 32]:
         x, edge_index = create_test_graph(n_nodes=n_nodes, n_features=7)
 
-        output = model(x, edge_index, problem_id=0, num_classes=2)
+        output = model(x, edge_index, problem_id=0)
 
-        print(f"  {n_nodes} nœuds: predictions shape = {output['predictions'].shape}")
+        print(f"  {n_nodes} nœuds: probs = {output['probs'].shape}, preds = {output['predictions'].shape}")
         assert output['predictions'].shape == (1, n_nodes)
 
-    print("✅ Différentes Tailles OK\n")
+    print("OK Différentes Tailles\n")
     return True
 
 
 def run_all_tests():
     """Lance tous les tests"""
     print("\n" + "=" * 60)
-    print("       TESTS DU PROTOTYPE v1 - QuantumGraphModel")
+    print("   TESTS PROTOTYPE v1 - Binaire + Symmetric BCE Loss")
     print("=" * 60 + "\n")
 
     tests = [
         ("Encoder", test_encoder),
         ("Problem Embedding", test_problem_embedding),
         ("Transformer", test_transformer),
-        ("Classifier", test_classifier),
-        ("Full Model", test_full_model),
+        ("Classifier Binaire", test_classifier_binary),
+        ("Symmetric BCE Loss", test_symmetric_loss),
+        ("Similarité", test_similarity_metric),
+        ("Modèle Complet", test_full_model),
         ("Backpropagation", test_backpropagation),
         ("Training Step", test_training_step),
-        ("Different Sizes", test_different_graph_sizes),
+        ("Différentes Tailles", test_different_graph_sizes),
     ]
 
     results = []
@@ -336,7 +408,7 @@ def run_all_tests():
             success = test_fn()
             results.append((name, success))
         except Exception as e:
-            print(f"❌ ERREUR dans {name}: {e}\n")
+            print(f"ERREUR dans {name}: {e}\n")
             results.append((name, False))
 
     # Résumé
@@ -348,15 +420,15 @@ def run_all_tests():
     total = len(results)
 
     for name, success in results:
-        status = "✅" if success else "❌"
-        print(f"  {status} {name}")
+        status = "OK" if success else "FAIL"
+        print(f"  [{status}] {name}")
 
     print(f"\n  Total: {passed}/{total} tests passés")
 
     if passed == total:
-        print("\n  🎉 TOUS LES TESTS SONT PASSÉS ! 🎉")
+        print("\n  TOUS LES TESTS SONT PASSES !")
     else:
-        print("\n  ⚠️  Certains tests ont échoué.")
+        print("\n  Certains tests ont échoué.")
 
     print("=" * 60 + "\n")
 
