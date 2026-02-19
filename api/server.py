@@ -189,7 +189,6 @@ async def startup_event():
 async def health():
     return {"status": "ok", "model_loaded": model is not None}
 
-
 @app.post("/predict", response_model=PredictionResult)
 async def predict(request: GenerateRequest):
     """Generate a graph and predict QAOA parameters."""
