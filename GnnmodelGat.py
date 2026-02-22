@@ -11,8 +11,10 @@ import time
 
 class QAOAPredictorGAT(nn.Module):
     """
-    GNN using Graph Attention Networks (GAT) to predict optimal QAOA parameters
-    GAT learns which nodes/edges are important for determining optimal parameters
+    Graph Attention Network (GAT) for predicting QAOA parameters.
+    
+    This model utilizes attention mechanisms to weigh the importance of neighbors,
+    explicitly incorporating edge weights into the attention scores.
     """
     def __init__(self, input_dim=3, hidden_dim=64, num_layers=3, p_layers=1, 
                  attention_heads=8, dropout=0.3):
@@ -28,10 +30,11 @@ class QAOAPredictorGAT(nn.Module):
         # First layer: input_dim -> hidden_dim
         self.convs.append(GATConv(
             input_dim, 
-            hidden_dim // attention_heads,  # Each head outputs hidden_dim//heads
+            hidden_dim // attention_heads,
             heads=attention_heads,
             dropout=dropout,
-            concat=True  # Concatenate heads
+            concat=True,
+            edge_dim=1
         ))
         
         # Intermediate layers: hidden_dim -> hidden_dim
@@ -41,7 +44,8 @@ class QAOAPredictorGAT(nn.Module):
                 hidden_dim // attention_heads,
                 heads=attention_heads,
                 dropout=dropout,
-                concat=True
+                concat=True,
+                edge_dim=1
             ))
         
         # Last layer: hidden_dim -> hidden_dim (average heads instead of concat)
@@ -50,7 +54,8 @@ class QAOAPredictorGAT(nn.Module):
             hidden_dim,
             heads=attention_heads,
             dropout=dropout,
-            concat=False  # Average heads for final layer
+            concat=False,  # Average heads for final layer
+            edge_dim=1
         ))
         
         # Batch normalization
@@ -72,13 +77,20 @@ class QAOAPredictorGAT(nn.Module):
         self.fc_beta = nn.Linear(64, p_layers)
         
         self.dropout = nn.Dropout(dropout)
+        
+        # Input Batch Normalization
+        self.input_bn = nn.BatchNorm1d(input_dim)
     
     def forward(self, data):
         x, edge_index, batch = data.x, data.edge_index, data.batch
         
+        # Normalize inputs first!
+        x = self.input_bn(x)
+        
         # GAT layers with residual connections
         for i, conv in enumerate(self.convs):
-            x_new = conv(x, edge_index)
+            # Integrate edge weights (J_ij) into attention mechanism
+            x_new = conv(x, edge_index, edge_attr=data.edge_attr)
             
             # Batch normalization
             x_new = self.batch_norms[i](x_new)
@@ -91,7 +103,6 @@ class QAOAPredictorGAT(nn.Module):
             else:
                 x = x_new
         
-        # Graph-level pooling (dual pooling: mean + max)
         if self.use_dual_pooling:
             x_mean = global_mean_pool(x, batch)
             x_max = global_max_pool(x, batch)
@@ -128,7 +139,10 @@ class QAOAPredictorGAT(nn.Module):
         with torch.no_grad():
             for i, conv in enumerate(self.convs):
                 # Get attention weights from GAT layer
-                x_new, (edge_idx, alpha) = conv(x, edge_index, return_attention_weights=True)
+                # Ensure edge_attr is on correct device
+                edge_attr = data.edge_attr.to(device) if hasattr(data, 'edge_attr') and data.edge_attr is not None else None
+                
+                x_new, (edge_idx, alpha) = conv(x, edge_index, edge_attr=edge_attr, return_attention_weights=True)
                 attention_weights.append((edge_idx.cpu(), alpha.cpu()))
                 
                 x_new = self.batch_norms[i](x_new)
@@ -220,8 +234,14 @@ class DatasetLoader:
         """
         x = torch.tensor(sample_dict['node_features'], dtype=torch.float)
         
+        # Extract indices where edges exist
+        # Extract indices and weights from adjacency matrix
         adj_matrix = np.array(sample_dict['adjacency_matrix'])
-        edge_index = torch.tensor(np.array(np.where(adj_matrix > 0)), dtype=torch.long)
+        rows, cols = np.where(adj_matrix != 0)
+        edge_index = torch.tensor(np.array([rows, cols]), dtype=torch.long)
+        
+        # Reshape edge weights for GAT compatibility [num_edges, 1]
+        edge_weights = torch.tensor(adj_matrix[rows, cols], dtype=torch.float).view(-1, 1)
         
         gamma = sample_dict['optimal_gamma']
         beta = sample_dict['optimal_beta']
@@ -233,7 +253,8 @@ class DatasetLoader:
             
         y = torch.tensor(gamma + beta, dtype=torch.float)
         
-        data = Data(x=x, edge_index=edge_index, y=y)
+        # Pass edge_attr (weights) to Data object
+        data = Data(x=x, edge_index=edge_index, edge_attr=edge_weights, y=y)
         data.n_nodes = sample_dict['n_nodes']
         data.n_edges = sample_dict['n_edges']
         data.graph_type = sample_dict['graph_type']
@@ -357,14 +378,14 @@ def main():
     
     if model_type == 'GAT':
         model = QAOAPredictorGAT(
-            input_dim=7,
+            input_dim=11,
             hidden_dim=64,
             num_layers=3,
             p_layers=p_layers,
             attention_heads=8,
             dropout=0.3
         ).to(device)
-        print("🧠 Using GAT (Graph Attention Network) with 7 node features")
+        print("Using GAT with edge conditioning and enhanced node features.")
     else:
         model = QAOAPredictorGCN(
             input_dim=7,
@@ -373,7 +394,7 @@ def main():
             p_layers=p_layers,
             dropout=0.3
         ).to(device)
-        print("🧠 Using GCN (Graph Convolutional Network) with 7 node features")
+        print("Using GCN with standard features.")
     
     n_params = count_parameters(model)
     print(f"Model parameters: {n_params:,}\n")
@@ -427,17 +448,17 @@ def main():
                   f"β MAE: {beta_mae:.6f}")
         
         if patience_counter >= max_patience:
-            print(f"\n⏹️  Early stopping at epoch {epoch}")
+            print(f"\nEarly stopping at epoch {epoch}")
             break
     
     training_time = time.time() - start_time
     
     print(f"\n{'='*70}")
-    print(f"✅ Training completed in {training_time/60:.2f} minutes!")
-    print(f"📊 Best validation loss: {best_val_loss:.6f}")
-    print(f"🎯 Best γ MAE: {gamma_mae:.6f}")
-    print(f"🎯 Best β MAE: {beta_mae:.6f}")
-    print(f"💾 Model saved: best_qaoa_{model_type.lower()}_model.pt")
+    print(f"Training completed in {training_time/60:.2f} minutes.")
+    print(f"Best validation loss: {best_val_loss:.6f}")
+    print(f"Best Gamma MAE: {gamma_mae:.6f}")
+    print(f"Best Beta MAE:  {beta_mae:.6f}")
+    print(f"Model saved: best_qaoa_{model_type.lower()}_model.pt")
     print(f"{'='*70}")
 
 
