@@ -11,6 +11,12 @@ import time
 
 
 class QAOAPredictorGAT(nn.Module):
+    """
+    Graph Attention Network (GAT) for predicting QAOA parameters.
+    
+    This model utilizes attention mechanisms to weigh the importance of neighbors,
+    explicitly incorporating edge weights into the attention scores.
+    """
     def __init__(self, input_dim=3, hidden_dim=64, num_layers=3, p_layers=1, 
                  attention_heads=8, dropout=0.3):
         super(QAOAPredictorGAT, self).__init__()
@@ -19,8 +25,10 @@ class QAOAPredictorGAT(nn.Module):
         self.p_layers = p_layers
         self.attention_heads = attention_heads
         
+        # GAT layers with multi-head attention
         self.convs = nn.ModuleList()
         
+        # First layer: input_dim -> hidden_dim
         self.convs.append(GATConv(
             input_dim, 
             hidden_dim // attention_heads,
@@ -30,6 +38,7 @@ class QAOAPredictorGAT(nn.Module):
             edge_dim=1
         ))
         
+        # Intermediate layers: hidden_dim -> hidden_dim
         for _ in range(num_layers - 2):
             self.convs.append(GATConv(
                 hidden_dim,
@@ -40,23 +49,27 @@ class QAOAPredictorGAT(nn.Module):
                 edge_dim=1
             ))
         
+        # Last layer: hidden_dim -> hidden_dim (average heads instead of concat)
         self.convs.append(GATConv(
             hidden_dim,
             hidden_dim,
             heads=attention_heads,
             dropout=dropout,
-            concat=False,
+            concat=False, # Average heads for final layer
             edge_dim=1
         ))
         
+        # Batch normalization
         self.batch_norms = nn.ModuleList([
             nn.BatchNorm1d(hidden_dim) for _ in range(num_layers)
         ])
         
+        # Graph-level pooling (combine mean and max for richer representation)
         self.use_dual_pooling = True
         
+        # MLP head for parameter prediction
         if self.use_dual_pooling:
-            self.fc1 = nn.Linear(hidden_dim * 2, 128)
+            self.fc1 = nn.Linear(hidden_dim * 2, 128)  # *2 because of mean+max pooling
         else:
             self.fc1 = nn.Linear(hidden_dim, 128)
             
@@ -65,19 +78,27 @@ class QAOAPredictorGAT(nn.Module):
         self.fc_beta = nn.Linear(64, p_layers)
         
         self.dropout = nn.Dropout(dropout)
+
+        # Input Batch Normalization
         self.input_bn = nn.BatchNorm1d(input_dim)
     
     def forward(self, data):
         x, edge_index, batch = data.x, data.edge_index, data.batch
         
+        # Normalize inputs first!
         x = self.input_bn(x)
         
+        # GAT layers with residual connections
         for i, conv in enumerate(self.convs):
+            # Integrate edge weights (J_ij) into attention mechanism
             x_new = conv(x, edge_index, edge_attr=data.edge_attr)
+
+            # Batch normalization
             x_new = self.batch_norms[i](x_new)
             x_new = F.elu(x_new)
             x_new = self.dropout(x_new)
             
+            # Residual connection (skip connection)
             if i > 0 and x.shape[1] == x_new.shape[1]:
                 x = x + x_new
             else:
@@ -90,11 +111,13 @@ class QAOAPredictorGAT(nn.Module):
         else:
             x = global_mean_pool(x, batch)
         
+        # MLP head
         x = F.elu(self.fc1(x))
         x = self.dropout(x)
         x = F.elu(self.fc2(x))
         x = self.dropout(x)
         
+        # Predict gamma and beta
         gamma = self.fc_gamma(x)
         beta = self.fc_beta(x)
         
@@ -138,16 +161,19 @@ class QAOAPredictorGCN(nn.Module):
         self.num_layers = num_layers
         self.p_layers = p_layers
         
+        # GCN layers
         self.convs = nn.ModuleList()
         self.convs.append(GCNConv(input_dim, hidden_dim))
         
         for _ in range(num_layers - 1):
             self.convs.append(GCNConv(hidden_dim, hidden_dim))
         
+        # Batch normalization
         self.batch_norms = nn.ModuleList([
             nn.BatchNorm1d(hidden_dim) for _ in range(num_layers)
         ])
         
+        # MLP head
         self.fc1 = nn.Linear(hidden_dim * 2, 128)
         self.fc2 = nn.Linear(128, 64)
         self.fc_gamma = nn.Linear(64, p_layers)
