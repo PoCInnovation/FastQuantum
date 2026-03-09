@@ -9,6 +9,14 @@ In the long term, the ambition is to go even further by creating a model able to
 FastQuantum currently focuses on using **Graph Neural Networks (GNNs)** and **Quantum Neural Networks (QNNs)** to learn how to predict optimal parameters for quantum algorithms.
 
 Many quantum algorithms—such as **MaxCut** or **Vertex Cover**—can be represented as graphs. This makes GNNs a natural fit: they can capture the structure of the problem instance and learn meaningful patterns directly from the graph topology. In parallel, QNNs allow the model to integrate quantum-inspired representations that may generalize better to circuits with quantum-specific behavior.
+## Key Features
+
+### Graph Neural Network (GNN)
+We utilize a **Graph Attention Network (GAT)** to process the graph-structured data.
+- **Edge-Conditioned Attention**: The model explicitly uses edge weights ($J_{ij}$ from the Hamiltonian) to determine the importance of connections, mimicking the physical interactions of the MaxCut problem.
+- **Laplacian Positional Encodings (LPE)**: We inject the "spectral coordinates" of nodes (eigenvectors of the Laplacian) as features. This gives the GNN a sense of "GPS" to understand the graph's geometry and symmetry, significantly improving its ability to distinguish non-isomorphic graphs.
+- **Input Normalization**: A Batch Normalization layer ensures that these rich features are properly scaled for efficient learning.
+
 ## Getting Started
 
 ### Installation
@@ -20,13 +28,89 @@ cd FastQuantum
 pip install -r requirements.txt
 ```
 
-### Quickstart
-
-Forthcoming
-
 ### Usage
 
-Forthcoming
+1. **Generate Dataset**
+   Create a training and validation dataset with enriched features (heuristics + LPE).
+   ```bash
+   python generate_dataset.py
+   ```
+   *This will create `qaoa_train_dataset.json` and `qaoa_val_dataset.json` in the `Dataset/` folder.*
+
+2. **Train Model**
+   Train the GAT model on the generated data.
+   ```bash
+   python GnnmodelGat.py
+   ```
+   *The script will automatically detect the GPU, train the model, and save the best checkpoint as `best_qaoa_gat_model.pt`.*
+
+## Dataset Details
+
+### Generation Script (`generate_v1_dataset.py`)
+
+The dataset generation script is designed to create diverse graph instances and find optimal QAOA parameters for them. It supports **MaxCut**, **Maximum Independent Set (MIS)**, and **Maximum Clique** problems.
+
+**Key Steps:**
+1.  **Graph Generation**: Creates graphs using various topologies (Erdős-Rényi, Barabási-Albert, Regular, Watts-Strogatz, Lollipop) to ensure diversity.
+2.  **Feature Extraction**: Computes node features including degree, centrality measures (betweenness, closeness, eigenvector, PageRank), clustering coefficients, and Random Walk Positional Encodings (RWPE).
+3.  **Ground Truth Calculation**: Solves the problem exactly using brute force to establish a baseline.
+4.  **QAOA Optimization**: Uses Qiskit's `StatevectorEstimator` and COBYLA optimizer to find optimal `gamma` and `beta` parameters that maximize the expected energy.
+5.  **Filtering**: Only saves instances where the QAOA solution achieves a high approximation ratio (e.g., > 0.85) relative to the optimal solution.
+
+**Usage Arguments:**
+- `--problem`: The optimization problem to solve (`MAXCUT`, `MIS`, `MAX_CLIQUE`). Default: `MAXCUT`.
+- `--samples`: Target number of samples to generate. Default: `100`.
+- `--nodes`: Range of nodes (format "min-max", e.g. `8-16`). Default: `8-16`.
+- `--workers`: Number of parallel processes to use. Default: `os.cpu_count()-1`.
+- `--output`: Path to save the generated JSON file. Default: `Dataset/qaoa_dataset.json`.
+
+**Example Command:**
+```bash
+python generate_v1_dataset.py --problem MIS --samples 500 --nodes 10-14 --output Dataset/train_mis.json
+```
+
+### Output Data Structure
+
+The output is a JSON file containing a list of graph instances. Each instance is a dictionary with the following fields:
+
+*   **`id`** *(int)*: Unique identifier for the sample within the dataset.
+*   **`problem`** *(str)*: The type of combinatorial problem (e.g., "MIS").
+*   **`n_nodes`** *(int)*: Number of nodes in the graph.
+*   **`topo`** *(str)*: The generator used for the graph topology (e.g., "BA" for Barabási-Albert).
+*   **`adj`** *(List[List[float]])*: The adjacency matrix of the graph. $A_{ij} = 1.0$ if an edge exists between node $i$ and $j$, else $0.0$.
+*   **`x`** *(List[List[float]])*: Matrix of node features. Each row corresponds to a node and contains a concatenated vector of:
+    *   Node heuristics (Degree, Degree Centrality, Clustering Coeff, Betweenness, Closeness, PageRank, Eigenvector Centrality).
+    *   RWPE (Random Walk Positional Encodings) features (default depth of 16).
+*   **`gamma`** *(List[float])*: Optimized QAOA rotation angles for the phase separator unitary ($U_C(\gamma)$).
+*   **`beta`** *(List[float])*: Optimized QAOA rotation angles for the mixing unitary ($U_B(\beta)$).
+*   **`ratio`** *(float)*: The approximation ratio achieved by the QAOA parameters compared to the exact brute-force solution.
+*   **`exact_value`** *(float)*: The optimal solution value found by brute force (e.g., max independent set size).
+*   **`exact_solution`** *(List[int])*: The bitstring configuration achieving the optimal value (e.g., `[0, 1, 0, 1]` where 1 means node selected).
+
+#### Example JSON Object
+
+```json
+{
+  "id": 0,
+  "problem": "MIS",
+  "n_nodes": 14,
+  "topo": "BA",
+  "adj": [
+    [0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, ...], 
+    [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, ...],
+    ...
+  ],
+  "x": [
+    [6.0, 0.46, 0.20, 0.27, 0.65, 0.12, 0.39, ...], // Features for Node 0
+    [1.0, 0.07, 0.00, 0.00, 0.40, 0.02, 0.09, ...]  // Features for Node 1
+  ],
+  "gamma": [3.380012773071252],
+  "beta": [0.5386966770357803],
+  "ratio": 0.973516949739922,
+  "exact_value": 6.0,
+  "exact_solution": [1, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1]
+}
+```
 
 ## Get involved
 

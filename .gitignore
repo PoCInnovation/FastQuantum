@@ -1,4 +1,8 @@
-.venv/
+.venv*
 __pycache__/
+
+DOC*
+
+Dataset/
 
 *.parquet
