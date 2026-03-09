@@ -19,8 +19,11 @@ import networkx as nx
 import torch
 from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
+import time
+import asyncio
 
 from GnnmodelGat import QAOAPredictorGAT
+from api.qiskit_utils import solve_qaoa_qiskit
 
 app = FastAPI(title="FastQuantum API", version="1.0.0")
 
@@ -178,6 +181,11 @@ class PredictionResult(BaseModel):
     beta: List[float]
     p_layers: int
     graph: GraphData
+    qiskit_gamma: Optional[List[float]] = None
+    qiskit_beta: Optional[List[float]] = None
+    ai_execution_time: float
+    qiskit_execution_time: Optional[float] = None
+    speedup: Optional[float] = None
 
 
 @app.on_event("startup")
@@ -192,6 +200,8 @@ async def health():
 @app.post("/predict", response_model=PredictionResult)
 async def predict(request: GenerateRequest):
     """Generate a graph and predict QAOA parameters."""
+    print(f"\n--- New Request: /predict ---")
+    print(f"Parameters: {request.n_nodes} nodes, {request.edge_prob} edge prob, type: {request.graph_type}")
 
     if model is None:
         raise HTTPException(status_code=500, detail="Model not loaded")
@@ -225,6 +235,8 @@ async def predict(request: GenerateRequest):
     # Check connectivity
     if not nx.is_connected(G):
         raise HTTPException(status_code=400, detail="Generated graph is disconnected. Try different parameters.")
+    
+    print(f"Graph generated successfully: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges")
 
     # Convert to PyG data
     data = graph_to_pyg_data(G)
@@ -232,16 +244,41 @@ async def predict(request: GenerateRequest):
     # Get node importance
     importance = get_node_importance(G, data)
 
-    # Predict parameters
+    # Predict parameters (AI)
+    print("Starting AI prediction...")
     loader = DataLoader([data], batch_size=1, shuffle=False)
     batch = next(iter(loader)).to(device)
 
+    start_ai = time.time()
     with torch.no_grad():
         output = model(batch)
-
+    
     output = output.cpu().numpy()[0]
     gamma = output[:p_layers].tolist()
     beta = output[p_layers:].tolist()
+    ai_execution_time = time.time() - start_ai
+    print(f"AI prediction finished in {ai_execution_time:.4f}s")
+    print(f"AI params -> Gamma: {gamma}, Beta: {beta}")
+
+    # Run Qiskit optimization (Classical/Quantum simulation)
+    # We run this in a separate thread to avoid blocking the event loop
+    print("Starting Qiskit optimization (COBYLA)...")
+    loop = asyncio.get_event_loop()
+    try:
+        # Wrap the executor in a timeout so it doesn't block the API forever
+        # Exact Qiskit simulation execution depends highly on specs; 120s is reasonable for PoC comparison.
+        q_gamma, q_beta, q_time = await asyncio.wait_for(
+            loop.run_in_executor(None, solve_qaoa_qiskit, G, p_layers),
+            timeout=120.0
+        )
+        print(f"Qiskit optimization finished in {q_time:.4f}s")
+        print(f"Qiskit params -> Gamma: {q_gamma}, Beta: {q_beta}")
+    except asyncio.TimeoutError:
+        print("Qiskit execution timed out after 120s.")
+        q_gamma, q_beta, q_time = None, None, 0.0
+    except Exception as e:
+        print(f"Qiskit execution failed: {e}")
+        q_gamma, q_beta, q_time = None, None, 0.0
 
     # Build node data
     degrees = dict(G.degree())
@@ -269,11 +306,18 @@ async def predict(request: GenerateRequest):
         avg_degree=sum(degrees.values()) / G.number_of_nodes()
     )
 
+    speedup = (q_time / ai_execution_time) if ai_execution_time > 0 and q_time > 0 else 0.0
+
     return PredictionResult(
         gamma=gamma,
         beta=beta,
         p_layers=p_layers,
-        graph=graph_data
+        graph=graph_data,
+        qiskit_gamma=q_gamma,
+        qiskit_beta=q_beta,
+        ai_execution_time=ai_execution_time,
+        qiskit_execution_time=q_time,
+        speedup=speedup
     )
 
 

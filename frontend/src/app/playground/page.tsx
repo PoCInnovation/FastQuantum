@@ -60,6 +60,11 @@ interface PredictionResult {
   beta: number[];
   p_layers: number;
   graph: GraphData;
+  qiskit_gamma?: number[];
+  qiskit_beta?: number[];
+  ai_execution_time: number;
+  qiskit_execution_time?: number;
+  speedup?: number;
 }
 
 // Graph types with descriptions
@@ -695,57 +700,122 @@ export default function PlaygroundPage() {
                 </CardContent>
               </Card>
 
-              {/* Parameters Results Panel */}
               <div className="space-y-4">
                 {result ? (
                   <>
-                    <Card className="border-primary/20 bg-primary/5">
-                      <CardHeader className="pb-3">
-                        <CardTitle className="flex items-center gap-2 text-base">
-                          <span className="font-mono text-primary">gamma</span>
-                          <span className="text-muted-foreground">(γ)</span>
-                        </CardTitle>
-                        <CardDescription>Parametre de phase QAOA</CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="space-y-3">
-                          {result.gamma.map((g, i) => (
-                            <div key={i} className="flex items-center justify-between rounded-lg bg-card p-3">
-                              <span className="text-sm font-medium text-muted-foreground">
-                                γ<sub>{i + 1}</sub>
-                              </span>
-                              <span className="font-mono text-xl font-semibold text-primary">
-                                {g.toFixed(4)}
-                              </span>
+                    {/* Performance Comparison */}
+                    {result.speedup && result.qiskit_execution_time && (
+                      <Card className="border-green-500/20 bg-green-500/10">
+                        <CardHeader className="pb-2">
+                          <CardTitle className="flex items-center gap-2 text-base">
+                            <FontAwesomeIcon icon={faChartLine} className="h-4 w-4 text-green-600" />
+                            <span className="text-green-700">Performance & Efficacite</span>
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <div className="text-xs font-medium uppercase text-muted-foreground">Temps IA (GNN)</div>
+                              <div className="mt-1 font-mono text-xl font-bold text-primary">
+                                {(result.ai_execution_time * 1000).toFixed(2)} ms
+                              </div>
                             </div>
-                          ))}
-                        </div>
-                      </CardContent>
-                    </Card>
+                            <div>
+                              <div className="text-xs font-medium uppercase text-muted-foreground">Temps Qiskit</div>
+                              <div className="mt-1 font-mono text-xl font-bold text-orange-600">
+                                {(result.qiskit_execution_time * 1000).toFixed(2)} ms
+                              </div>
+                            </div>
+                          </div>
 
-                    <Card className="border-orange-500/20 bg-orange-500/5">
-                      <CardHeader className="pb-3">
-                        <CardTitle className="flex items-center gap-2 text-base">
-                          <span className="font-mono text-orange-600">beta</span>
-                          <span className="text-muted-foreground">(β)</span>
-                        </CardTitle>
-                        <CardDescription>Parametre de mixage QAOA</CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="space-y-3">
-                          {result.beta.map((b, i) => (
-                            <div key={i} className="flex items-center justify-between rounded-lg bg-card p-3">
-                              <span className="text-sm font-medium text-muted-foreground">
-                                β<sub>{i + 1}</sub>
-                              </span>
-                              <span className="font-mono text-xl font-semibold text-orange-600">
-                                {b.toFixed(4)}
-                              </span>
+                          <Separator className="my-3 bg-green-500/20" />
+
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium text-green-800">Acceleration (Speedup)</span>
+                            <Badge className="bg-green-600 hover:bg-green-700 px-3 py-1 text-base">
+                              x{result.speedup.toFixed(1)}
+                            </Badge>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      {/* AI Results */}
+                      <div className="space-y-4">
+                        <h3 className="flex items-center gap-2 font-medium text-primary">
+                          <FontAwesomeIcon icon={faAtom} className="h-4 w-4" />
+                          Predictions IA
+                        </h3>
+
+                        <Card className="border-primary/20 bg-primary/5">
+                          <CardHeader className="pb-2">
+                            <CardTitle className="text-sm">Gamma (γ)</CardTitle>
+                          </CardHeader>
+                          <CardContent className="pb-3">
+                            <div className="flex flex-wrap gap-2">
+                              {result.gamma.map((g, i) => (
+                                <Badge key={i} variant="secondary" className="font-mono bg-background">
+                                  {g.toFixed(3)}
+                                </Badge>
+                              ))}
                             </div>
-                          ))}
-                        </div>
-                      </CardContent>
-                    </Card>
+                          </CardContent>
+                        </Card>
+
+                        <Card className="border-primary/20 bg-primary/5">
+                          <CardHeader className="pb-2">
+                            <CardTitle className="text-sm">Beta (β)</CardTitle>
+                          </CardHeader>
+                          <CardContent className="pb-3">
+                            <div className="flex flex-wrap gap-2">
+                              {result.beta.map((b, i) => (
+                                <Badge key={i} variant="secondary" className="font-mono bg-background">
+                                  {b.toFixed(3)}
+                                </Badge>
+                              ))}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </div>
+
+                      <div className="space-y-4">
+                        <h3 className="flex items-center gap-2 font-medium text-orange-600">
+                          <FontAwesomeIcon icon={faSliders} className="h-4 w-4" />
+                          Reference Qiskit
+                        </h3>
+
+                        <Card className="border-orange-500/20 bg-orange-500/5">
+                          <CardHeader className="pb-2">
+                            <CardTitle className="text-sm">Gamma (γ)</CardTitle>
+                          </CardHeader>
+                          <CardContent className="pb-3">
+                            <div className="flex flex-wrap gap-2">
+                              {result.qiskit_gamma?.map((g, i) => (
+                                <Badge key={i} variant="outline" className="font-mono border-orange-200 bg-background text-orange-700">
+                                  {g.toFixed(3)}
+                                </Badge>
+                              ))}
+                            </div>
+                          </CardContent>
+                        </Card>
+
+                        <Card className="border-orange-500/20 bg-orange-500/5">
+                          <CardHeader className="pb-2">
+                            <CardTitle className="text-sm">Beta (β)</CardTitle>
+                          </CardHeader>
+                          <CardContent className="pb-3">
+                            <div className="flex flex-wrap gap-2">
+                              {result.qiskit_beta?.map((b, i) => (
+                                <Badge key={i} variant="outline" className="font-mono border-orange-200 bg-background text-orange-700">
+                                  {b.toFixed(3)}
+                                </Badge>
+                              ))}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </div>
+                    </div>
 
                     <Card>
                       <CardContent className="pt-4">
@@ -764,7 +834,7 @@ export default function PlaygroundPage() {
                       <div className="text-center text-muted-foreground">
                         <FontAwesomeIcon icon={faSliders} className="mb-3 h-12 w-12 opacity-30" />
                         <p className="text-sm">Configurez le graphe et executez la prediction</p>
-                        <p className="text-xs mt-1">Les parametres gamma et beta seront affiches ici</p>
+                        <p className="text-xs mt-1">Comparaison IA vs Qiskit s&apos;affichera ici</p>
                       </div>
                     </CardContent>
                   </Card>
