@@ -43,6 +43,20 @@ def parse_args():
     return parser.parse_args()
 
 
+def batch_targets(y, batch_idx, device):
+    """Convertit les targets flat [total_nodes] en [batch_size, max_nodes] + mask"""
+    batch_size = batch_idx.max().item() + 1
+    max_nodes = torch.bincount(batch_idx).max().item()
+    targets = torch.zeros(batch_size, max_nodes, dtype=torch.float, device=device)
+    mask = torch.zeros(batch_size, max_nodes, device=device)
+    for b in range(batch_size):
+        m = (batch_idx == b)
+        n = m.sum().item()
+        targets[b, :n] = y[m].float()
+        mask[b, :n] = 1.0
+    return targets, mask
+
+
 def train(config):
     # ─────────────────────────────────────
     # Init wandb
@@ -52,7 +66,7 @@ def train(config):
     # ─────────────────────────────────────
     # Dataset
     # ─────────────────────────────────────
-    train_loader, val_loader, _ = load_dataloaders(DATASET_PATH)
+    train_loader, val_loader, _ = load_dataloaders(DATASET_PATH, batch_size=32)
 
     # ─────────────────────────────────────
     # Device (GPU si disponible, sinon CPU)
@@ -92,11 +106,14 @@ def train(config):
         for batch in train_loader:
             optimizer.zero_grad()
 
+            targets, mask = batch_targets(batch.y, batch.batch, device)
             output, loss, similarity = model.forward_with_loss(
                 x=batch.x.to(device),
                 edge_index=batch.edge_index.to(device),
-                problem_id=batch.problem_id.item(),
-                targets=batch.y.unsqueeze(0).to(device)
+                problem_id=batch.problem_id.to(device),
+                targets=targets,
+                batch=batch.batch.to(device),
+                mask=mask
             )
 
             loss.backward()
@@ -118,11 +135,14 @@ def train(config):
 
         with torch.no_grad():
             for batch in val_loader:
+                targets, mask = batch_targets(batch.y, batch.batch, device)
                 output, loss, similarity = model.forward_with_loss(
                     x=batch.x.to(device),
                     edge_index=batch.edge_index.to(device),
-                    problem_id=batch.problem_id.item(),
-                    targets=batch.y.unsqueeze(0).to(device)
+                    problem_id=batch.problem_id.to(device),
+                    targets=targets,
+                    batch=batch.batch.to(device),
+                    mask=mask
                 )
                 val_loss += loss.item()
                 val_similarity += similarity
