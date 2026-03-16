@@ -75,4 +75,4 @@ if __name__ == "__main__":
     print("Méthode : bayes (648 combinaisons possibles, wandb choisit intelligemment)")
     print("Lancement des runs...\n")
 
-    wandb.agent(sweep_id, function=train_sweep)
+    wandb.agent(sweep_id, function=train_sweep, count=30)

@@ -131,10 +131,10 @@ class QuantumGraphModel(nn.Module):
         """Pourcentage de ressemblance (avec symétrie)"""
         return self.classifier.compute_similarity(predictions, targets)
 
-    def forward_with_loss(self, x, edge_index, problem_id, targets, batch=None):
+    def forward_with_loss(self, x, edge_index, problem_id, targets, batch=None, mask=None):
         """Forward + Loss en une seule passe"""
         output = self.forward(x, edge_index, problem_id, batch)
-        loss = self.compute_loss(output['logits'], targets)
+        loss = self.compute_loss(output['logits'], targets, mask)
         similarity = self.compute_similarity(output['predictions'], targets)
         return output, loss, similarity
 
