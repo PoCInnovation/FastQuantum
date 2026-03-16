@@ -56,14 +56,12 @@ interface GraphData {
 }
 
 interface PredictionResult {
-  gamma: number[];
-  beta: number[];
-  p_layers: number;
+  probs: number[];
+  predictions: number[];
   graph: GraphData;
-  qiskit_gamma?: number[];
-  qiskit_beta?: number[];
+  classical_predictions?: number[];
   ai_execution_time: number;
-  qiskit_execution_time?: number;
+  classical_execution_time?: number;
   speedup?: number;
 }
 
@@ -167,14 +165,15 @@ function calculateForceLayout(
   return pos;
 }
 
-// Graph Visualization Component
 function GraphVisualization({
   graph,
   selectedNode,
+  result,
   onNodeSelect,
 }: {
   graph: GraphData | null;
   selectedNode: number | null;
+  result: PredictionResult | null;
   onNodeSelect: (id: number | null) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -309,12 +308,21 @@ function GraphVisualization({
     );
   }
 
-  // Color scale for importance (blue to red)
-  const getNodeColor = (importance: number) => {
-    const r = Math.round(importance * 200 + 55);
-    const g = Math.round((1 - importance) * 100 + 80);
-    const b = Math.round((1 - importance) * 200 + 55);
-    return `rgb(${r}, ${g}, ${b})`;
+  // Color scale for predicted classes
+  const getNodeColor = (id: number) => {
+    if (!result) {
+      // Default: Importance based if no prediction
+      const node = graph.nodes.find(n => n.id === id);
+      const importance = node ? node.importance : 0.5;
+      const r = Math.round(importance * 200 + 55);
+      const g = Math.round((1 - importance) * 100 + 80);
+      const b = Math.round((1 - importance) * 200 + 55);
+      return `rgb(${r}, ${g}, ${b})`;
+    }
+    
+    // Using Class 0 (Blue-ish) and Class 1 (Orange-ish)
+    const pred = result.predictions[id];
+    return pred === 1 ? 'rgb(249, 115, 22)' : 'rgb(59, 130, 246)'; 
   };
 
   return (
@@ -435,10 +443,10 @@ function GraphVisualization({
                 cx={pos.x}
                 cy={pos.y}
                 r={radius}
-                fill={getNodeColor(node.importance)}
+                fill={getNodeColor(node.id)}
                 stroke={isSelected ? "#2563eb" : "#fff"}
                 strokeWidth={isSelected ? 2.5 : 1.5}
-                style={{ transition: "r 0.2s ease-out, stroke 0.2s ease-out, stroke-width 0.2s ease-out" }}
+                style={{ transition: "r 0.2s ease-out, stroke 0.2s ease-out, stroke-width 0.2s ease-out, fill 0.3s ease" }}
               />
 
               {/* Node label */}
@@ -461,23 +469,39 @@ function GraphVisualization({
       </svg>
 
       {/* Legend */}
-      <div className="absolute bottom-2 left-2 flex items-center gap-2 rounded bg-card/90 px-2 py-1 text-xs">
-        <span className="text-muted-foreground">Importance:</span>
-        <div className="flex items-center gap-1">
-          <div className="h-3 w-3 rounded-full bg-[rgb(55,180,255)]" />
-          <span>Faible</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <div className="h-3 w-3 rounded-full bg-[rgb(255,80,55)]" />
-          <span>Elevee</span>
-        </div>
+      <div className="absolute bottom-2 left-2 flex items-center gap-3 rounded bg-card/90 px-3 py-2 text-xs border border-border">
+        {result ? (
+          <>
+            <span className="font-medium">Partition:</span>
+            <div className="flex items-center gap-1.5">
+              <div className="h-3 w-3 rounded-full bg-blue-500" />
+              <span>Classe 0</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="h-3 w-3 rounded-full bg-orange-500" />
+              <span>Classe 1</span>
+            </div>
+          </>
+        ) : (
+          <>
+             <span className="text-muted-foreground mr-1">Importance:</span>
+             <div className="flex items-center gap-1">
+               <div className="h-3 w-3 rounded-full bg-[rgb(55,180,255)]" />
+               <span>Faible</span>
+             </div>
+             <div className="flex items-center gap-1">
+               <div className="h-3 w-3 rounded-full bg-[rgb(255,80,55)]" />
+               <span>Elevee</span>
+             </div>
+          </>
+        )}
       </div>
     </div>
   );
 }
 
 // Node Details Panel
-function NodeDetails({ node }: { node: Node | null }) {
+function NodeDetails({ node, result }: { node: Node | null, result: PredictionResult | null }) {
   if (!node) {
     return (
       <div className="rounded-lg border border-dashed border-border bg-secondary/30 p-4 text-center text-sm text-muted-foreground">
@@ -486,18 +510,30 @@ function NodeDetails({ node }: { node: Node | null }) {
     );
   }
 
+  const prob = result?.probs?.[node.id];
+  const predClass = result?.predictions?.[node.id];
+
   return (
     <div className="space-y-3 rounded-lg border border-border bg-card p-4">
       <div className="flex items-center justify-between">
         <span className="text-sm font-medium">Noeud {node.id}</span>
-        <Badge
-          variant="secondary"
-          style={{
-            backgroundColor: `rgba(${Math.round(node.importance * 200 + 55)}, 100, 100, 0.2)`,
-          }}
-        >
-          Importance: {(node.importance * 100).toFixed(0)}%
-        </Badge>
+        {result ? (
+          <Badge
+            variant={predClass === 1 ? "default" : "secondary"}
+            className={predClass === 1 ? "bg-orange-500 hover:bg-orange-600" : "bg-blue-500 hover:bg-blue-600 text-white"}
+          >
+            Classe {predClass}
+          </Badge>
+        ) : (
+          <Badge
+            variant="secondary"
+            style={{
+              backgroundColor: `rgba(${Math.round(node.importance * 200 + 55)}, 100, 100, 0.2)`,
+            }}
+          >
+            Importance: {(node.importance * 100).toFixed(0)}%
+          </Badge>
+        )}
       </div>
       <Separator />
       <div className="grid grid-cols-2 gap-2 text-sm">
@@ -509,6 +545,18 @@ function NodeDetails({ node }: { node: Node | null }) {
           <span className="text-muted-foreground">Clustering</span>
           <div className="font-mono font-medium">{node.clustering.toFixed(3)}</div>
         </div>
+        {result && prob !== undefined && (
+          <div className="col-span-2 mt-1">
+            <span className="text-muted-foreground">Confiance IA (Prob Classe 1)</span>
+            <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-secondary">
+              <div 
+                className="h-full bg-primary transition-all duration-500" 
+                style={{ width: `${prob * 100}%` }}
+              />
+            </div>
+            <div className="mt-1 text-right text-xs font-mono">{(prob * 100).toFixed(1)}%</div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -606,7 +654,7 @@ export default function PlaygroundPage() {
           <TabsList className="mb-6 grid w-full grid-cols-2">
             <TabsTrigger value="parameters" className="flex items-center gap-2">
               <FontAwesomeIcon icon={faSliders} className="h-4 w-4" />
-              Prediction de parametres
+              Solution MaxCut
             </TabsTrigger>
             <TabsTrigger value="results" className="flex items-center gap-2">
               <FontAwesomeIcon icon={faChartLine} className="h-4 w-4" />
@@ -693,7 +741,7 @@ export default function PlaygroundPage() {
                     ) : (
                       <>
                         <FontAwesomeIcon icon={faPlay} className="mr-2 h-4 w-4" />
-                        Predire les parametres
+                        Resoudre
                       </>
                     )}
                   </Button>
@@ -704,7 +752,7 @@ export default function PlaygroundPage() {
                 {result ? (
                   <>
                     {/* Performance Comparison */}
-                    {result.speedup && result.qiskit_execution_time && (
+                    {result.speedup && result.classical_execution_time && (
                       <Card className="border-green-500/20 bg-green-500/10">
                         <CardHeader className="pb-2">
                           <CardTitle className="flex items-center gap-2 text-base">
@@ -721,9 +769,9 @@ export default function PlaygroundPage() {
                               </div>
                             </div>
                             <div>
-                              <div className="text-xs font-medium uppercase text-muted-foreground">Temps Qiskit</div>
+                              <div className="text-xs font-medium uppercase text-muted-foreground">Temps Ref. Classique</div>
                               <div className="mt-1 font-mono text-xl font-bold text-orange-600">
-                                {(result.qiskit_execution_time * 1000).toFixed(2)} ms
+                                {(result.classical_execution_time * 1000).toFixed(2)} ms
                               </div>
                             </div>
                           </div>
@@ -745,33 +793,18 @@ export default function PlaygroundPage() {
                       <div className="space-y-4">
                         <h3 className="flex items-center gap-2 font-medium text-primary">
                           <FontAwesomeIcon icon={faAtom} className="h-4 w-4" />
-                          Predictions IA
+                          Predictions IA (MaxCut)
                         </h3>
 
                         <Card className="border-primary/20 bg-primary/5">
                           <CardHeader className="pb-2">
-                            <CardTitle className="text-sm">Gamma (γ)</CardTitle>
+                            <CardTitle className="text-sm">Classes predites (Bitstring)</CardTitle>
                           </CardHeader>
                           <CardContent className="pb-3">
-                            <div className="flex flex-wrap gap-2">
-                              {result.gamma.map((g, i) => (
-                                <Badge key={i} variant="secondary" className="font-mono bg-background">
-                                  {g.toFixed(3)}
-                                </Badge>
-                              ))}
-                            </div>
-                          </CardContent>
-                        </Card>
-
-                        <Card className="border-primary/20 bg-primary/5">
-                          <CardHeader className="pb-2">
-                            <CardTitle className="text-sm">Beta (β)</CardTitle>
-                          </CardHeader>
-                          <CardContent className="pb-3">
-                            <div className="flex flex-wrap gap-2">
-                              {result.beta.map((b, i) => (
-                                <Badge key={i} variant="secondary" className="font-mono bg-background">
-                                  {b.toFixed(3)}
+                            <div className="flex flex-wrap gap-1">
+                              {result.predictions.map((p, i) => (
+                                <Badge key={i} variant={p === 1 ? "default" : "secondary"} className={`font-mono ${p === 1 ? 'bg-orange-500 hover:bg-orange-600' : 'bg-blue-500 hover:bg-blue-600 text-white'}`}>
+                                  {p}
                                 </Badge>
                               ))}
                             </div>
@@ -782,51 +815,29 @@ export default function PlaygroundPage() {
                       <div className="space-y-4">
                         <h3 className="flex items-center gap-2 font-medium text-orange-600">
                           <FontAwesomeIcon icon={faSliders} className="h-4 w-4" />
-                          Reference Qiskit
+                          Reference Classique
                         </h3>
 
                         <Card className="border-orange-500/20 bg-orange-500/5">
                           <CardHeader className="pb-2">
-                            <CardTitle className="text-sm">Gamma (γ)</CardTitle>
+                            <CardTitle className="text-sm">Classes de reference (MaxCut Glouton)</CardTitle>
                           </CardHeader>
                           <CardContent className="pb-3">
-                            <div className="flex flex-wrap gap-2">
-                              {result.qiskit_gamma?.map((g, i) => (
-                                <Badge key={i} variant="outline" className="font-mono border-orange-200 bg-background text-orange-700">
-                                  {g.toFixed(3)}
-                                </Badge>
-                              ))}
-                            </div>
-                          </CardContent>
-                        </Card>
-
-                        <Card className="border-orange-500/20 bg-orange-500/5">
-                          <CardHeader className="pb-2">
-                            <CardTitle className="text-sm">Beta (β)</CardTitle>
-                          </CardHeader>
-                          <CardContent className="pb-3">
-                            <div className="flex flex-wrap gap-2">
-                              {result.qiskit_beta?.map((b, i) => (
-                                <Badge key={i} variant="outline" className="font-mono border-orange-200 bg-background text-orange-700">
-                                  {b.toFixed(3)}
-                                </Badge>
-                              ))}
+                            <div className="flex flex-wrap gap-1">
+                              {result.classical_predictions ? (
+                                result.classical_predictions.map((p, i) => (
+                                  <Badge key={i} variant="outline" className={`font-mono border-orange-200 ${p === 1 ? 'bg-orange-100 text-orange-800' : 'bg-blue-50 text-blue-800'}`}>
+                                    {p}
+                                  </Badge>
+                                ))
+                              ) : (
+                                <span className="text-xs text-muted-foreground">Timeout ou echec reference</span>
+                              )}
                             </div>
                           </CardContent>
                         </Card>
                       </div>
                     </div>
-
-                    <Card>
-                      <CardContent className="pt-4">
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-muted-foreground">Couches QAOA (p)</span>
-                          <Badge variant="secondary" className="font-mono">
-                            {result.p_layers}
-                          </Badge>
-                        </div>
-                      </CardContent>
-                    </Card>
                   </>
                 ) : (
                   <Card className="border-dashed">
@@ -834,7 +845,7 @@ export default function PlaygroundPage() {
                       <div className="text-center text-muted-foreground">
                         <FontAwesomeIcon icon={faSliders} className="mb-3 h-12 w-12 opacity-30" />
                         <p className="text-sm">Configurez le graphe et executez la prediction</p>
-                        <p className="text-xs mt-1">Comparaison IA vs Qiskit s&apos;affichera ici</p>
+                        <p className="text-xs mt-1">Comparaison IA vs Reference s&apos;affichera ici</p>
                       </div>
                     </CardContent>
                   </Card>
@@ -864,6 +875,7 @@ export default function PlaygroundPage() {
                     <GraphVisualization
                       graph={result?.graph || null}
                       selectedNode={selectedNode}
+                      result={result}
                       onNodeSelect={setSelectedNode}
                     />
                   </CardContent>
@@ -906,37 +918,50 @@ export default function PlaygroundPage() {
                 {/* Node details */}
                 <div>
                   <h3 className="mb-3 text-sm font-medium">Details du noeud</h3>
-                  <NodeDetails node={selectedNodeData} />
+                  <NodeDetails node={selectedNodeData} result={result} />
                 </div>
 
                 {/* Quick params view */}
                 {result && (
                   <Card>
                     <CardHeader className="pb-3">
-                      <CardTitle className="text-sm">Parametres predits</CardTitle>
+                      <CardTitle className="text-sm">Solution MaxCut</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <div>
-                        <div className="mb-2 text-xs font-medium text-muted-foreground">Gamma (γ)</div>
-                        <div className="flex flex-wrap gap-2">
-                          {result.gamma.map((g, i) => (
-                            <Badge key={i} variant="secondary" className="font-mono">
-                              γ{i + 1}: {g.toFixed(3)}
-                            </Badge>
-                          ))}
+                        <div className="mb-2 text-xs font-medium text-muted-foreground">Bitstring IA</div>
+                        <div className="px-3 py-2 bg-secondary rounded text-center text-sm font-mono tracking-widest break-all">
+                          {result.predictions.join("")}
                         </div>
                       </div>
-                      <Separator />
-                      <div>
-                        <div className="mb-2 text-xs font-medium text-muted-foreground">Beta (β)</div>
-                        <div className="flex flex-wrap gap-2">
-                          {result.beta.map((b, i) => (
-                            <Badge key={i} variant="outline" className="font-mono">
-                              β{i + 1}: {b.toFixed(3)}
-                            </Badge>
-                          ))}
-                        </div>
-                      </div>
+                      
+                      {result.classical_predictions && (
+                        <>
+                          <Separator />
+                          <div>
+                            <div className="mb-2 text-xs font-medium text-muted-foreground">Bitstring Classique</div>
+                            <div className="px-3 py-2 border border-orange-200 bg-orange-50 rounded text-center text-sm font-mono text-orange-800 tracking-widest break-all">
+                              {result.classical_predictions.join("")}
+                            </div>
+                          </div>
+                          <Separator />
+                          <div>
+                            <div className="mb-2 text-xs font-medium text-muted-foreground">Similarite</div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm font-medium">
+                                {result.predictions.reduce(
+                                  (acc, p, i) => acc + (p === result.classical_predictions![i] ? 1 : 0), 0
+                                )} / {result.predictions.length} correspondances
+                              </span>
+                              <Badge className="bg-primary/20 text-primary hover:bg-primary/30">
+                                {Math.round((result.predictions.reduce(
+                                  (acc, p, i) => acc + (p === result.classical_predictions![i] ? 1 : 0), 0
+                                ) / result.predictions.length) * 100)}%
+                              </Badge>
+                            </div>
+                          </div>
+                        </>
+                      )}
                     </CardContent>
                   </Card>
                 )}

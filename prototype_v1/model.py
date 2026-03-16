@@ -10,10 +10,10 @@ Pipeline:
 
 import torch
 import torch.nn as nn
-from encoder import GNNEncoder
-from problem_embedding import ProblemEmbeddingTable
-from transformer import GraphTransformer
-from classifier import Classifier
+from prototype_v1.encoder import GNNEncoder
+from prototype_v1.problem_embedding import ProblemEmbeddingTable
+from prototype_v1.transformer import GraphTransformer
+from prototype_v1.classifier import Classifier
 
 
 class QuantumGraphModel(nn.Module):
