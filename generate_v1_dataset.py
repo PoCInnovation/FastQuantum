@@ -125,31 +125,7 @@ def generate_diverse_graph(n_nodes: int) -> Tuple[nx.Graph, str]:
     if not nx.is_connected(G): G = nx.complete_graph(n_nodes)
     return nx.convert_node_labels_to_integers(G), topo_type
 
-def compute_rwpe(G: nx.Graph, k: int = 16) -> List[List[float]]:
-    n = G.number_of_nodes()
-    try:
-        A = nx.adjacency_matrix(G).toarray()
-        D_inv = np.diag(1.0 / np.sum(A, axis=1))
-        P = D_inv @ A
-        rwpe, Pk = [], np.eye(n)
-        for _ in range(k):
-            Pk = Pk @ P
-            rwpe.append(np.diag(Pk))
-        return np.stack(rwpe, axis=1).tolist()
-    except:
-        return np.zeros((n, k)).tolist()
-
-def compute_node_features(G: nx.Graph) -> List[List[float]]:
-    n = G.number_of_nodes()
-    feat_dicts = [
-        dict(G.degree()), nx.degree_centrality(G), nx.clustering(G),
-        nx.betweenness_centrality(G), nx.closeness_centrality(G)
-    ]
-    try: feat_dicts.append(nx.pagerank(G, max_iter=200))
-    except: feat_dicts.append({i: 0.0 for i in range(n)})
-    try: feat_dicts.append(nx.eigenvector_centrality(G, max_iter=200))
-    except: feat_dicts.append({i: 0.0 for i in range(n)})
-    return [[d[i] for d in feat_dicts] for i in range(n)]
+from fastquantum.features import compute_rwpe, compute_node_features
 
 def build_qaoa_circuit(G: nx.Graph, p: int, problem_type: str):
     n = G.number_of_nodes()
