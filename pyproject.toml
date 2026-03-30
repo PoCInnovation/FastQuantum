@@ -27,6 +27,10 @@ quantum = [
     "pennylane>=0.34.0",
     "pennylane-lightning>=0.34.0"
 ]
+server = [
+    "fastapi>=0.100.0",
+    "uvicorn>=0.23.0"
+]
 
 [tool.setuptools.packages.find]
 include = ["fastquantum*"]

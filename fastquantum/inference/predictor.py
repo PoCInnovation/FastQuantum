@@ -50,9 +50,16 @@ class FastQuantumPredictor:
         if model_type == 'GAT':
             # Default input_dim if not in checkpoint: 7 (heuristics) + 16 (RWPE) + 3 (num_problems) = 26
             input_dim = input_dim if input_dim is not None else 26
+            
+            # Auto-infer hidden_dim if possible
+            sd = checkpoint['model_state_dict']
+            hidden_dim = 128
+            if 'gc1.weight' in sd:
+                hidden_dim = sd['gc1.weight'].shape[0]
+            
             self.model = QAOAPredictorGAT(
                 input_dim=input_dim,
-                hidden_dim=128,      
+                hidden_dim=hidden_dim,      
                 num_layers=4,        
                 p_layers=self.p_layers,
                 attention_heads=8,

@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FastQuantum Demo</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Unpkg ForceGraph (Modern HTML5 Canvas physics graph) -->
+    <script src="https://unpkg.com/force-graph"></script>
+    <!-- Google Fonts for modern typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Controls -->
+        <aside class="sidebar glass-panel">
+            <div class="brand">
+                <div class="logo">FQ</div>
+                <h1>FastQuantum</h1>
+            </div>
+            
+            <section class="control-group">
+                <h3>Problem Configuration</h3>
+                
+                <div class="input-row">
+                    <label for="problem-type">Optimization Problem</label>
+                    <div class="select-wrapper">
+                        <select id="problem-type">
+                            <option value="MAXCUT">MaxCut</option>
+                            <option value="MIS">Maximum Independent Set (MIS)</option>
+                            <option value="MAX_CLIQUE">Maximum Clique</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="input-row">
+                    <label for="node-count">Qubits (Nodes): <span id="node-val">12</span></label>
+                    <input type="range" id="node-count" min="4" max="25" value="12">
+                </div>
+
+                <button id="btn-generate" class="btn btn-secondary">Generate New Graph</button>
+            </section>
+            
+            <hr>
+            
+            <section class="control-group">
+                <h3>Compare AI vs Physics</h3>
+                <p class="help-text">
+                    Observe the difference between exact quantum simulation and GNN inference.
+                </p>
+                <button id="btn-compare-qaoa" class="btn btn-primary">
+                    <span class="btn-text">Predict Graph Angles (QAOA)</span>
+                </button>
+                <button id="btn-compare-sol" class="btn btn-primary outline">
+                    <span class="btn-text">Predict Exact Output (Bitstring)</span>
+                </button>
+            </section>
+        </aside>
+
+        <!-- Main Workspace -->
+        <main class="workspace">
+            <!-- Top Half: Graph Visualization -->
+            <section class="graph-section glass-panel">
+                <div class="section-header">
+                    <h2>Topology View</h2>
+                    <span class="badge" id="graph-stats">Awaiting Generation...</span>
+                </div>
+                <div id="graph-container"></div>
+            </section>
+
+            <!-- Bottom Half: Results & Telemetry View -->
+            <section class="results-section">
+                <!-- Competitor 1: Simulation/Exact -->
+                <div class="competitor-card glass-panel" id="card-classic">
+                    <div class="card-header">
+                        <h3>Physics Simulation</h3>
+                        <div class="spinner hidden" id="spinner-classic"></div>
+                    </div>
+                    <div class="metrics">
+                        <div class="metric">
+                            <span class="label">Time</span>
+                            <span class="value" id="res-classic-time">-- s</span>
+                        </div>
+                        <div class="metric">
+                            <span class="label">Objective Value</span>
+                            <span class="value" id="res-classic-val">--</span>
+                        </div>
+                    </div>
+                    <div class="terminal-output" id="res-classic-raw">// Output will appear here...</div>
+                </div>
+
+                <!-- Competitor 2: FastQuantum IA -->
+                <div class="competitor-card glass-panel highlight-blue" id="card-ia">
+                    <div class="card-header">
+                        <h3>FastQuantum IA</h3>
+                        <div class="spinner hidden" id="spinner-ia"></div>
+                    </div>
+                    <div class="metrics">
+                        <div class="metric">
+                            <span class="label">Time</span>
+                            <span class="value" id="res-ia-time">-- s</span>
+                        </div>
+                        <div class="metric">
+                            <span class="label">Objective Value</span>
+                            <span class="value" id="res-ia-val">--</span>
+                        </div>
+                    </div>
+                    <div class="terminal-output" id="res-ia-raw">// Output will appear here...</div>
+                </div>
+            </section>
+        </main>
+    </div>
+    
+    <script src="script.js"></script>
+</body>
+</html>
