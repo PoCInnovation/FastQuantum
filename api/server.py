@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 FastAPI server for QAOA GNN model inference.
-Provides endpoints for graph generation and parameter prediction.
+Uses FastQuantumPredictor to predict warm-starting QAOA angles (gamma, beta),
+then runs a warm-started Qiskit QAOA to produce the final solution.
 """
 
 import sys
@@ -16,14 +17,11 @@ from pydantic import BaseModel
 from typing import List, Optional
 import numpy as np
 import networkx as nx
-import torch
-from torch_geometric.data import Data
-from torch_geometric.loader import DataLoader
 import time
 import asyncio
 
-from prototype_v1.model import QuantumGraphModel
-from api.qiskit_utils import solve_classical_maxcut
+from fastquantum import FastQuantumPredictor
+from api.qiskit_utils import solve_classical_maxcut, solve_qiskit_maxcut, solve_qiskit_maxcut_warmed
 
 app = FastAPI(title="FastQuantum API", version="1.0.0")
 
@@ -37,95 +35,33 @@ app.add_middleware(
     expose_headers=["*"],
 )
 
-# Global model instance
-model = None
-device = None
-p_layers = 1
-input_dim = 7
+# Global predictor instance
+predictor: Optional[FastQuantumPredictor] = None
+
+# Default checkpoint path (relative to project root)
+DEFAULT_CHECKPOINT = Path(__file__).parent.parent / "finetuned_maxcut_model.pt"
+
 
 def load_model():
-    """Load the trained model."""
-    global model, device
+    """Load the trained model via FastQuantumPredictor."""
+    global predictor
 
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-    model = QuantumGraphModel(
-        node_input_dim=7,
-        embedding_dim=128,
-        hidden_dim=256,
-        gnn_layers=4,
-        transformer_layers=4,
-        num_heads=8,
-        num_problems=10,
-        dropout=0.1
-    ).to(device)
-
-    # Note: Currently no trained weights available, using random weights.
-    # To load weights later, add:
-    # model.load_state_dict(torch.load('path_to_weights.pt', map_location=device))
-    model.eval()
-
-    print(f"QuantumGraphModel loaded on {device}")
+    checkpoint_path = str(DEFAULT_CHECKPOINT)
+    predictor = FastQuantumPredictor(model_checkpoint=checkpoint_path)
+    print(f"FastQuantumPredictor loaded from {checkpoint_path}")
 
 
-def compute_node_features(G: nx.Graph) -> np.ndarray:
-    """Compute 7 node features for the graph."""
-    n_nodes = G.number_of_nodes()
-    features = np.zeros((n_nodes, 7))
-
-    degrees = dict(G.degree())
-    features[:, 0] = [degrees[i] for i in range(n_nodes)]
-
-    degree_centrality = nx.degree_centrality(G)
-    features[:, 1] = [degree_centrality[i] for i in range(n_nodes)]
-
-    clustering = nx.clustering(G)
-    features[:, 2] = [clustering[i] for i in range(n_nodes)]
-
-    betweenness = nx.betweenness_centrality(G)
-    features[:, 3] = [betweenness[i] for i in range(n_nodes)]
-
-    closeness = nx.closeness_centrality(G)
-    features[:, 4] = [closeness[i] for i in range(n_nodes)]
-
-    pagerank = nx.pagerank(G, max_iter=1000)
-    features[:, 5] = [pagerank[i] for i in range(n_nodes)]
-
-    try:
-        eigenvector = nx.eigenvector_centrality(G, max_iter=1000)
-        features[:, 6] = [eigenvector[i] for i in range(n_nodes)]
-    except:
-        features[:, 6] = 0.0
-
-    return features
-
-
-def graph_to_pyg_data(G: nx.Graph) -> Data:
-    """Convert NetworkX graph to PyTorch Geometric Data."""
-    node_features = compute_node_features(G)
-    x = torch.tensor(node_features, dtype=torch.float)
-
-    adj_matrix = nx.to_numpy_array(G)
-    edge_index = torch.tensor(np.array(np.where(adj_matrix > 0)), dtype=torch.long)
-
-    y = torch.zeros(p_layers * 2)
-
-    return Data(x=x, edge_index=edge_index, y=y)
-
-def get_node_importance(G: nx.Graph, data: Data) -> List[float]:
-    """Calculate node importance. For prototype_v1, we use static attributes like degree centrality instead of GAT attention."""
-    # Since prototype_v1 doesn't easily expose individual attention weights per edge in the same format,
-    # we return a normalized degree centrality for visualization purposes.
-    # In a real scenario, this might come from the transformer attention or the probs output.
+def get_node_importance(G: nx.Graph) -> List[float]:
+    """Calculate node importance using degree centrality for visualization."""
     n_nodes = G.number_of_nodes()
     centrality = nx.degree_centrality(G)
     importance = np.array([centrality[i] for i in range(n_nodes)])
-    
+
     if importance.max() > importance.min():
         importance = (importance - importance.min()) / (importance.max() - importance.min())
     else:
         importance = np.ones(n_nodes)
-        
+
     return importance.tolist()
 
 
@@ -134,7 +70,7 @@ class GenerateRequest(BaseModel):
     n_nodes: int = 15
     edge_prob: float = 0.5
     graph_type: str = "erdos_renyi"
-    problem_id: int = 0  # 0: MaxCut, 1: Vertex Cover, 2: Independent Set
+    problem_id: int = 0  # 0: MaxCut (only MaxCut supported with current checkpoint)
     seed: Optional[int] = None
 
 
@@ -165,9 +101,12 @@ class PredictionResult(BaseModel):
     predictions: List[int]
     graph: GraphData
     classical_predictions: Optional[List[int]] = None
+    qiskit_predictions: Optional[List[int]] = None
     ai_execution_time: float
     classical_execution_time: Optional[float] = None
+    qiskit_execution_time: Optional[float] = None
     speedup: Optional[float] = None
+    qiskit_speedup: Optional[float] = None
 
 
 @app.on_event("startup")
@@ -177,15 +116,17 @@ async def startup_event():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "model_loaded": model is not None}
+    return {"status": "ok", "model_loaded": predictor is not None}
+
 
 @app.post("/predict", response_model=PredictionResult)
 async def predict(request: GenerateRequest):
-    """Generate a graph and predict QAOA parameters."""
+    """Generate a graph, predict QAOA warm-starting angles via FastQuantumPredictor,
+    then run warm-started Qiskit QAOA for the final solution."""
     print(f"\n--- New Request: /predict ---")
     print(f"Parameters: {request.n_nodes} nodes, {request.edge_prob} edge prob, type: {request.graph_type}")
 
-    if model is None:
+    if predictor is None:
         raise HTTPException(status_code=500, detail="Model not loaded")
 
     seed = request.seed if request.seed else np.random.randint(10000)
@@ -217,53 +158,59 @@ async def predict(request: GenerateRequest):
     # Check connectivity
     if not nx.is_connected(G):
         raise HTTPException(status_code=400, detail="Generated graph is disconnected. Try different parameters.")
-    
+
     print(f"Graph generated successfully: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges")
 
-    # Convert to PyG data
-    data = graph_to_pyg_data(G)
-
-    # Get node importance
-    importance = get_node_importance(G, data)
-
-    # Predict parameters (AI)
-    print("Starting AI prediction...")
-    loader = DataLoader([data], batch_size=1, shuffle=False)
-    batch = next(iter(loader)).to(device)
-
+    # Step 1: Predict warm-starting angles via FastQuantumPredictor (< 20ms)
+    print("Starting AI prediction (warm-starting angles)...")
     start_ai = time.time()
-    with torch.no_grad():
-        output = model(batch.x, batch.edge_index, problem_id=request.problem_id)
-    
-    # Extract prediction bits and probabilities
-    probs = output['probs'][0].cpu().numpy().tolist()
-    predictions = output['predictions'][0].cpu().numpy().tolist()
-    
-    ai_execution_time = time.time() - start_ai
-    print(f"AI prediction finished in {ai_execution_time:.4f}s")
-    print(f"AI predictions -> {predictions}")
+    gamma, beta = predictor.predict(G, problem="MAXCUT")
+    ai_time = time.time() - start_ai
+    print(f"FastQuantumPredictor finished in {ai_time:.4f}s — gamma={gamma}, beta={beta}")
 
-    # Run Classical optimization (Greedy MaxCut)
-    # We run this in a separate thread to avoid blocking the event loop
-    print("Starting Classical Greedy optimization...")
+    # Step 2: Run warm-started Qiskit QAOA with predicted angles
+    print("Running warm-started QAOA...")
+    p_layers = predictor.p_layers
+    ai_predictions, warmed_time, probs = solve_qiskit_maxcut_warmed(G, gamma, beta, p=p_layers)
+    ai_execution_time = ai_time + warmed_time
+    print(f"Warm-started QAOA finished in {warmed_time:.4f}s — predictions={ai_predictions}")
+
+    # If probs is empty (graph had 0 nodes), fill with importance
+    if not probs:
+        probs = get_node_importance(G)
+
+    # Run Classical and standard Qiskit QAOA in parallel for comparison
+    print("Starting Classical and standard Qiskit optimizations...")
     loop = asyncio.get_event_loop()
-    try:
-        c_predictions, c_time = await asyncio.wait_for(
-            loop.run_in_executor(None, solve_classical_maxcut, G, seed),
-            timeout=10.0
-        )
-        print(f"Classical optimization finished in {c_time:.4f}s")
-        print(f"Classical params -> Predictions: {c_predictions}")
-    except asyncio.TimeoutError:
-        print("Classical execution timed out after 10s.")
-        c_predictions, c_time = None, 0.0
-    except Exception as e:
-        print(f"Classical execution failed: {e}")
-        c_predictions, c_time = None, 0.0
+
+    async def run_classical():
+        try:
+            return await asyncio.wait_for(
+                loop.run_in_executor(None, solve_classical_maxcut, G, seed),
+                timeout=10.0
+            )
+        except Exception as e:
+            print(f"Classical execution failed: {e}")
+            return None, 0.0
+
+    async def run_qiskit():
+        try:
+            return await asyncio.wait_for(
+                loop.run_in_executor(None, solve_qiskit_maxcut, G, 1, seed),
+                timeout=30.0
+            )
+        except Exception as e:
+            print(f"Qiskit QAOA execution failed: {e}")
+            return None, 0.0
+
+    (c_predictions, c_time), (q_predictions, q_time) = await asyncio.gather(run_classical(), run_qiskit())
+    print(f"Classical finished in {c_time:.4f}s")
+    print(f"Standard Qiskit QAOA finished in {q_time:.4f}s")
 
     # Build node data
     degrees = dict(G.degree())
     clustering = nx.clustering(G)
+    importance = get_node_importance(G)
 
     nodes = [
         Node(
@@ -288,15 +235,19 @@ async def predict(request: GenerateRequest):
     )
 
     speedup = (c_time / ai_execution_time) if ai_execution_time > 0 and c_time > 0 else 0.0
+    q_speedup = (q_time / ai_execution_time) if ai_execution_time > 0 and q_time > 0 else 0.0
 
     return PredictionResult(
         probs=probs,
-        predictions=predictions,
+        predictions=ai_predictions,
         graph=graph_data,
         classical_predictions=c_predictions,
+        qiskit_predictions=q_predictions,
         ai_execution_time=ai_execution_time,
         classical_execution_time=c_time,
-        speedup=speedup
+        qiskit_execution_time=q_time,
+        speedup=speedup,
+        qiskit_speedup=q_speedup
     )
 
 
