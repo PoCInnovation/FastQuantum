@@ -6,3 +6,10 @@ DOC*
 Dataset/
 
 *.parquet
+
+# Poids des modèles entraînés (trop lourds pour Git, gérer avec LFS ou HF Hub)
+*.pt
+
+# Artefacts de build pip
+dist/
+*.egg-info/

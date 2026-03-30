@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fastquantum"
+version = "0.1.0"
+description = "Deep Learning for Warm-Starting Quantum Algorithms (QAOA)"
+readme = "README.md"
+authors = [
+    { name = "PoCInnovation", email = "contact@poc-innovation.fr" }
+]
+requires-python = ">=3.9"
+dependencies = [
+    "torch>=2.0.0",
+    "torch-geometric>=2.4.0",
+    "networkx>=2.6",
+    "numpy>=1.21.0",
+    "scipy>=1.7.0",
+]
+
+[project.optional-dependencies]
+quantum = [
+    "qiskit>=1.0.0",
+    "qiskit-algorithms>=0.3.0",
+    "qiskit-aer>=0.14.0",
+    "pennylane>=0.34.0",
+    "pennylane-lightning>=0.34.0"
+]
+
+[tool.setuptools.packages.find]
+include = ["fastquantum*"]
+exclude = ["experiments*", "Dataset*", "tests*"]
