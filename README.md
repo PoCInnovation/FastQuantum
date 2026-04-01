@@ -58,16 +58,25 @@ The dataset generation script is designed to create diverse graph instances and 
 5.  **Filtering**: Only saves instances where the QAOA solution achieves a high approximation ratio (e.g., > 0.85) relative to the optimal solution.
 
 **Usage Arguments:**
-- `--problem`: The optimization problem to solve (`MAXCUT`, `MIS`, `MAX_CLIQUE`). Default: `MAXCUT`.
-- `--samples`: Target number of samples to generate. Default: `100`.
-- `--nodes`: Range of nodes (format "min-max", e.g. `8-16`). Default: `8-16`.
+- `--samples`: Target number of total samples to generate. Default: `100`.
+- `--problem`: Single optimization problem to solve (`MAXCUT`, `MIS`, `MAX_CLIQUE`). Used only if `--mix` is not provided. Default: `MAXCUT`.
+- `--nodes`: Range of nodes (format "min-max", e.g. `8-16`). Used only if `--mix` is not provided. Default: `8-16`.
+- `--mix`: Allows generating multiple problem types, sizes, and proportions in a single run. Expects a list in the format `PROBLEM:PROPORTION:NODES`. 
 - `--workers`: Number of parallel processes to use. Default: `os.cpu_count()-1`.
-- `--output`: Path to save the generated JSON file. Default: `Dataset/qaoa_dataset.json`.
+- `--output`: Path to save the generated JSON file. Default: `Dataset/mixed_qaoa_dataset.json`.
 
-**Example Command:**
+**Example Commands:**
+
+Generate a standard dataset with a single problem:
 ```bash
 python generate_v1_dataset.py --problem MIS --samples 500 --nodes 10-14 --output Dataset/train_mis.json
 ```
+
+Generate a mixed dataset containing multiple problem types:
+```bash
+python generate_v1_dataset.py --samples 100000 --mix MAXCUT:0.4:8-16 MIS:0.3:10-20 MAX_CLIQUE:0.3:6-12
+```
+*Note: Using `--mix` generates all instances sequentially per problem type (e.g., all MAXCUT first, then MIS, then MAX_CLIQUE) and merges them into a single coherent JSON dataset.*
 
 ### Output Data Structure
 
