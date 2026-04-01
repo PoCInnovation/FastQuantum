@@ -183,8 +183,8 @@ def optimize_qaoa(G: nx.Graph, p: int, problem_type: str):
 def worker_task(args):
     idx, n_min, n_max, p, problem = args
     # Re-seed random for each process to ensure diversity
-    random.seed(idx + int(time.time()))
-    np.random.seed(idx + int(time.time()))
+    random.seed(idx + int(time.time() * 1000))
+    np.random.seed((idx + int(time.time() * 1000)) % (2**32 - 1))
     
     thresholds = {'MAXCUT': 0.85, 'MIS': 0.85, 'MAX_CLIQUE': 0.85}
     try:
@@ -202,40 +202,90 @@ def worker_task(args):
     except: return None
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--problem", type=str, default="MAXCUT", choices=["MAXCUT", "MIS", "MAX_CLIQUE"])
-    parser.add_argument("--samples", type=int, default=100)
-    parser.add_argument("--nodes", type=str, default="8-16")
+    parser = argparse.ArgumentParser(description="FastQuantum V1 Dataset Generator")
+    parser.add_argument("--samples", type=int, default=100, help="Total number of samples to generate")
+    parser.add_argument("--problem", type=str, default="MAXCUT", choices=["MAXCUT", "MIS", "MAX_CLIQUE"], help="Single problem type (if --mix is not used)")
+    parser.add_argument("--nodes", type=str, default="8-16", help="Node range (if --mix is not used)")
+    parser.add_argument("--mix", type=str, nargs="+", 
+        help="List of mixes in format PROBLEM:PROPORTION:NODES (e.g., MAXCUT:0.4:8-16 MIS:0.3:10-20 MAX_CLIQUE:0.3:6-12)")
     parser.add_argument("--workers", type=int, default=os.cpu_count()-1)
-    parser.add_argument("--output", type=str, default="Dataset/qaoa_dataset.json")
+    parser.add_argument("--output", type=str, default="Dataset/mixed_qaoa_dataset.json")
     args = parser.parse_args()
-    n_min, n_max = map(int, args.nodes.split('-'))
     
-    print(f"Starting Generation | Problem: {args.problem} | Target: {args.samples}")
-    print(f"Nodes: {n_min}-{n_max} | Workers: {args.workers}")
+    if args.mix:
+        mix_configs = []
+        total_prop = 0.0
+        for m in args.mix:
+            parts = m.split(':')
+            if len(parts) != 3:
+                raise ValueError(f"Invalid mix format: {m}. Use PROBLEM:PROPORTION:NODES")
+            prob, prop, nodes = parts
+            prop = float(prop)
+            total_prop += prop
+            n_min, n_max = map(int, nodes.split('-'))
+            mix_configs.append({'problem': prob, 'proportion': prop, 'n_min': n_min, 'n_max': n_max})
+            
+        for config in mix_configs:
+            config['target'] = int((config['proportion'] / total_prop) * args.samples)
+            
+        current_sum = sum(c['target'] for c in mix_configs)
+        if current_sum < args.samples and mix_configs:
+            mix_configs[0]['target'] += (args.samples - current_sum)
+    else:
+        n_min, n_max = map(int, args.nodes.split('-'))
+        mix_configs = [{'problem': args.problem, 'target': args.samples, 'n_min': n_min, 'n_max': n_max}]
+
+    print(f"Starting Generation | Target Total: {args.samples} | Workers: {args.workers}")
+    print("Configuration:")
+    for c in mix_configs:
+        print(f"  - {c['problem']}: {c['target']} samples, {c['n_min']}-{c['n_max']} nodes")
     
-    dataset, attempts = [], 0
+    dataset = []
+    total_attempts = 0
     pool = mp.Pool(args.workers)
     
-    # Use imap_unordered for real-time progress updates
-    task_args = ((i, n_min, n_max, DEFAULT_P_LAYERS, args.problem) for i in range(args.samples * 100))
-    
     try:
-        for result in pool.imap_unordered(worker_task, task_args):
-            attempts += 1
-            if result:
-                dataset.append(result)
-                print(f"Progress: {len(dataset)}/{args.samples} (Attempts: {attempts})", end='\r', flush=True)
+        global_idx = 0
+        for config in mix_configs:
+            target = config['target']
+            if target <= 0:
+                continue
             
-            if len(dataset) >= args.samples:
-                break
+            problem = config['problem']
+            n_min = config['n_min']
+            n_max = config['n_max']
+            
+            # Create a generator for this specific problem (we generate way more tasks but stops gracefully)
+            task_args = ((global_idx + i, n_min, n_max, DEFAULT_P_LAYERS, problem) for i in range(target * 100))
+            
+            problem_dataset = []
+            attempts = 0
+            for result in pool.imap_unordered(worker_task, task_args):
+                attempts += 1
+                if result:
+                    problem_dataset.append(result)
+                    print(f"Progress {problem}: {len(problem_dataset)}/{target} (Attempts: {attempts})", end='\r', flush=True)
+                
+                if len(problem_dataset) >= target:
+                    break
+            print(f"\nFinished {problem}: {len(problem_dataset)}/{target} (Attempts: {attempts})")
+            dataset.extend(problem_dataset)
+            total_attempts += attempts
+            global_idx += attempts
+            
     except KeyboardInterrupt:
         print("\nInterrupted by user. Saving partial dataset...")
     
     pool.terminate()
     pool.join()
     
-    print(f"\nFinal: {len(dataset)}/{args.samples} (Total attempts: {attempts})")
+    # Shuffle the merged dataset to avoid ordering biases during model training
+    random.shuffle(dataset)
+    for i, sample in enumerate(dataset):
+        sample['id'] = i
+        
+    print(f"\nFinal Total: {len(dataset)}/{sum(c['target'] for c in mix_configs)} (Total attempts: {total_attempts})")
+    
     os.makedirs(os.path.dirname(args.output), exist_ok=True)
     with open(args.output, 'w') as f: json.dump(dataset, f, indent=2)
     print(f"Done. Saved to {args.output}")
